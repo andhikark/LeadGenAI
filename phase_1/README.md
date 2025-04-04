@@ -3,12 +3,18 @@
 1. Make the scraper code recursive by inclusion of zipcode for an area (city/state).
 ```bash
 Input -> Business Industry, geographic location
-Output -> List of data objects containing business details such as (name, industry, address, rating, website, tel.no)
+Output -> List of data objects containing business details (name, industry, address, rating, website, tel.no)
 ```
 2. Build function to get list of all zip codes of an area (city/state).
 ```bash
 Input -> Geographic location (city/state)
 Output -> List of zip codes
+```
+
+3. Build a function to return company description using a LLM.
+```bash
+Input -> Name, Location
+Output -> LLM Generated Text
 ```
 
 ### Setup Instruction:
