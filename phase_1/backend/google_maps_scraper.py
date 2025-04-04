@@ -47,7 +47,7 @@ async def scrape_lead_by_industry(industry: str, location: str) -> None:
         search_query = f"{industry} in {location}"
         await page.fill("input[name='q']", search_query)
         await page.keyboard.press("Enter")
-        await page.wait_for_selector("div.ecceSd", timeout=5000)  # Wait for the scrollable container to load
+        await page.wait_for_selector("div.ecceSd", timeout=10000)  # Wait for the scrollable container to load
 
         scrollable_container = page.locator("div.ecceSd").nth(1)
         previous_count = 0
@@ -58,7 +58,7 @@ async def scrape_lead_by_industry(industry: str, location: str) -> None:
                 "(container) => container.scrollBy(0, container.scrollHeight)", 
                 await scrollable_container.element_handle()
             )
-            await asyncio.sleep(1)  # Wait for lazy-loaded content to load
+            await asyncio.sleep(2)  # Wait for lazy-loaded content to load
 
             # Count the number of loaded business containers
             business_containers = page.locator("div.bfdHYd.Ppzolf.OFBs3e")
@@ -91,9 +91,9 @@ async def scrape_lead_by_industry(industry: str, location: str) -> None:
                         for span in info_spans
                         if (await span.text_content()).strip() and (await span.text_content()).strip() != "·"
                     ]
-
-                    category = info_texts[0] if len(info_texts) > 0 else "NA"
-                    address = info_texts[-1] if len(info_texts) > 1 else "NA"
+                    category = info_texts[0]
+                    address = "NA" if len(info_texts) <= 2 else info_texts[-1]
+                    
 
                     rating_element = container.locator("span[aria-label*='stars']")
                     rating = (
@@ -140,4 +140,4 @@ async def scrape_lead_by_industry(industry: str, location: str) -> None:
         
         
 if __name__ == "__main__":
-    asyncio.run(scrape_lead_by_industry("private equity firms", "New York"))
+    asyncio.run(scrape_lead_by_industry("fintech companies", "New York"))
