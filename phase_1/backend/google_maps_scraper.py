@@ -47,7 +47,7 @@ async def scrape_lead_by_industry(industry: str, location: str) -> None:
         search_query = f"{industry} in {location}"
         await page.fill("input[name='q']", search_query)
         await page.keyboard.press("Enter")
-        await page.wait_for_selector("div.ecceSd", timeout=5000)  # Wait for the scrollable container to load
+        await page.wait_for_selector("div.ecceSd", timeout=25000)  # Wait for the scrollable container to load
 
         scrollable_container = page.locator("div.ecceSd").nth(1)
         previous_count = 0
