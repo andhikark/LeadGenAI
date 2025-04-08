@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from scraper.revenueScraper import get_company_revenue
+from scraper.revenueScraper import get_company_revenue_from_growjo
 from scraper.websiteNameScraper import find_company_website
 
 
@@ -24,8 +24,8 @@ def get_revenue():
     if not company:
         return jsonify({"error": "Missing company parameter"}), 400
 
-    revenue_data = get_company_revenue(company)
-    return jsonify(revenue_data)
+    data = get_company_revenue_from_growjo(company)
+    return jsonify(data)
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

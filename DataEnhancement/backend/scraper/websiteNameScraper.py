@@ -19,6 +19,7 @@ def find_company_website(company_name):
     try:
         res = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(res.text, "html.parser")
+        print(soup)
 
         result_links = soup.select("a[href^='http']")
         for link in result_links:
