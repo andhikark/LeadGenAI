@@ -2,6 +2,7 @@ import requests
 import pandas as pd
 import time
 import os
+import sys
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -173,21 +174,52 @@ class CompanyInfoRetriever:
             
         return result
 
+def read_companies_from_csv(csv_file_path, company_name_column='company_name'):
+    """Read company names from a CSV file."""
+    try:
+        # Read the CSV file
+        df = pd.read_csv(csv_file_path)
+        
+        # Check if the company name column exists
+        if company_name_column not in df.columns:
+            print(f"Error: Column '{company_name_column}' not found in CSV. Available columns: {df.columns.tolist()}")
+            print("Using the first column as company name column.")
+            company_name_column = df.columns[0]
+            
+        # Extract company names
+        companies = df[company_name_column].tolist()
+        
+        # Remove any NaN values and convert to string
+        companies = [str(company).strip() for company in companies if pd.notna(company)]
+        
+        return companies
+    except Exception as e:
+        print(f"Error reading CSV file: {str(e)}")
+        return []
+
 def main():
-    # List of companies to search
-    companies = [
-        "Lumious", 
-        "Kwik Brain",
-        "Quimbee",
-        "Canopy Ed",
-        "CustomGuide",
-        "AdaptedMind", 
-        "SafetySkills",
-        "Digital Marketer",
-        "Explore Learning",
-        "Lawline",
-        "Instructing.com"
-    ]
+    # Parse command line arguments
+    if len(sys.argv) < 2:
+        print("Usage: python script.py <path_to_csv_file> [company_name_column]")
+        print("Example: python script.py companies.csv company_name")
+        return
+        
+    csv_file_path = sys.argv[1]
+    
+    # If column name is provided as argument, use it
+    company_name_column = 'company_name'  # Default column name
+    if len(sys.argv) > 2:
+        company_name_column = sys.argv[2]
+        
+    # Read companies from CSV
+    print(f"Reading companies from {csv_file_path}...")
+    companies = read_companies_from_csv(csv_file_path, company_name_column)
+    
+    if not companies:
+        print("No companies found in the CSV file. Exiting.")
+        return
+        
+    print(f"Found {len(companies)} companies in the CSV file.")
     
     # Create the retriever
     api_key = "4c079a55cab715a7195e9426d8b53840ee087e91"  # Your API key
@@ -195,17 +227,20 @@ def main():
     
     # Process each company
     results = []
-    for company in companies:
-        print(f"\nProcessing {company}...")
+    for i, company in enumerate(companies):
+        print(f"\nProcessing {company} ({i+1}/{len(companies)})...")
         result = retriever.get_company_ceo_info(company)
         results.append(result)
         print(f"Status: {result['status']}")
-        time.sleep(2)  # Rate limiting to avoid hitting API limits
+        if i < len(companies) - 1:  # Don't sleep after the last item
+            print(f"Waiting 2 seconds before next company...")
+            time.sleep(2)  # Rate limiting to avoid hitting API limits
     
     # Convert to DataFrame and save to CSV
+    output_file = "company_ceo_data_results.csv"
     df = pd.DataFrame(results)
-    df.to_csv("company_ceo_data.csv", index=False)
-    print(f"\nData saved to company_ceo_data.csv")
+    df.to_csv(output_file, index=False)
+    print(f"\nData saved to {output_file}")
     print(f"Used {len(companies)} out of 25 free monthly searches.")
 
 if __name__ == "__main__":
