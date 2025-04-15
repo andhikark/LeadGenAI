@@ -10,6 +10,7 @@ Welcome! This tool allows you to upload a CSV file and normalize its structure
 to match our standard format for further processing.
 """)
 
+# --- Standard column structure
 STANDARD_COLUMNS = [
     'Company', 'City', 'State', 'First Name', 'Last Name', 'Email', 'Title', 'Website',
     'LinkedIn URL', 'Industry ', 'Revenue', 'Product/Service Category',
@@ -31,8 +32,11 @@ if uploaded_file:
         st.write("We detected the following columns in your file:")
         st.dataframe(df.head(), use_container_width=True)
 
-        st.markdown("#### 🔗 Map your CSV columns to our standard format:")
+        # --- Auto-mapping logic
+        auto_mapping = {col: col for col in STANDARD_COLUMNS if col in df.columns}
         column_mapping = {}
+
+        st.markdown("#### 🔗 Map your CSV columns to our standard format:")
 
         for target in STANDARD_COLUMNS:
             st.markdown(f"<div style='margin-bottom: -0.5rem; margin-top: 1rem; font-weight: 600;'>{target}</div>", unsafe_allow_html=True)
@@ -40,18 +44,26 @@ if uploaded_file:
             with col1:
                 st.text("From your file")
             with col2:
-                selected = st.selectbox(" ", ["-- None --"] + list(df.columns), key=target, label_visibility="collapsed")
+                default = auto_mapping.get(target, "-- None --")
+                selected = st.selectbox(" ", ["-- None --"] + list(df.columns), index=(["-- None --"] + list(df.columns)).index(default) if default != "-- None --" else 0, key=target, label_visibility="collapsed")
             column_mapping[target] = selected if selected != "-- None --" else None
 
         if st.button("🔄 Normalize CSV"):
             normalized_df = pd.DataFrame()
 
+            # Fill standard columns
             for col in STANDARD_COLUMNS:
                 if column_mapping[col] and column_mapping[col] in df.columns:
                     normalized_df[col] = df[column_mapping[col]]
                 else:
                     normalized_df[col] = ""
 
+            # Include extra (non-standard) columns
+            extra_columns = [col for col in df.columns if col not in column_mapping.values()]
+            for col in extra_columns:
+                normalized_df[col] = df[col]
+
+            st.markdown("---")
             st.markdown("### ✅ Normalized Data Preview")
             st.dataframe(normalized_df.head(), use_container_width=True)
 
