@@ -3,10 +3,13 @@
 import logging
 import time
 import random
+import os
 from bs4 import BeautifulSoup
 from selenium.webdriver.common.by import By
 from .utils import extract_domain
 from .jsonParser import extract_industry_from_json_data
+
+os.makedirs("output", exist_ok=True)
 
 def extract_company_details(driver, company_url, business_name):
     logging.info(f"Navigating to company URL: {company_url}")
