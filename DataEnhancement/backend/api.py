@@ -6,7 +6,9 @@ import asyncio
 from scraper.revenueScraper import get_company_revenue_from_growjo
 from scraper.websiteNameScraper import find_company_website
 from scraper.apollo_scraper import enrich_single_company
-from crawl4ai import AsyncWebCrawler
+from scraper.linkedinScraper.scraping.scraper import scrape_linkedin
+from scraper.linkedinScraper.scraping.login import login_to_linkedin
+from scraper.linkedinScraper.utils.chromeUtils import get_chrome_driver
 
 
 app = Flask(__name__)
@@ -55,6 +57,36 @@ def get_apollo_info_batch():
 
         return jsonify(results), 200
 
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/linkedin-info", methods=["POST"])
+def get_linkedin_info():
+    try:
+        data = request.get_json()
+        company = data.get("company")
+        city = data.get("city")
+        state = data.get("state")
+        website = data.get("website")
+
+        if not company:
+            return jsonify({"error": "Missing required field: company"}), 400
+
+        driver = get_chrome_driver(headless=True)
+
+        # 🔐 Note: For production, reuse logged-in session instead of logging in every time
+        login_to_linkedin(driver, "", "")  # use cookies/session if available
+
+        result = scrape_linkedin(
+            driver,
+            company=company,
+            expected_city=city,
+            expected_state=state,
+            website=website
+        )
+        driver.quit()
+
+        return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
