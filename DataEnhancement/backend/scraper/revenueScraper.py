@@ -4,7 +4,7 @@ from urllib.parse import quote
 import re
 
 # ✅ Import fallback Growjo search
-from growjo_list_scraper import get_growjo_company_list
+from .growjo_list_scraper import get_growjo_company_list
 
 def clean_company_name_variants(name):
     variants = []
@@ -80,16 +80,15 @@ def get_company_revenue_from_growjo(company_name, depth=0):
         except Exception:
             continue
 
-    # ✅ Fallback: search Growjo and retry with top result
+    # ✅ Fallback: return default if not found in first try
     if depth == 0:
-        for variant in clean_company_name_variants(company_name):
-            fallback_names = get_growjo_company_list(variant)
-            print(f"🔎 Fallback search for variant '{variant}' returned: {fallback_names}")
+        print(f"⚠️ Fallback revenue for '{company_name}' → '<$5M'")
+        return {
+            "company": company_name,
+            "source": "fallback",
+            "estimated_revenue": "<$5M"
+        }
 
-            if fallback_names:
-                top_result = fallback_names[0]
-                print(f"🔁 Retrying with top Growjo match: '{top_result}'")
-                return get_company_revenue_from_growjo(top_result, depth=1)
 
     return {
         "company": company_name,
