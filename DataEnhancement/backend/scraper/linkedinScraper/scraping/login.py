@@ -1,17 +1,18 @@
 import time
-import random
 import logging
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
+from .human import human_type, human_delay
+
 def login_to_linkedin(driver, username, password):
     logging.info("🔐 Starting login process...")
 
     # Go to login page directly
     driver.get('https://www.linkedin.com/login')
-    time.sleep(2 + random.random())
+    human_delay(1.5, 2)
 
     try:
         username_field = WebDriverWait(driver, 10).until(
@@ -24,25 +25,23 @@ def login_to_linkedin(driver, username, password):
         username_field.clear()
         password_field.clear()
 
-        for char in username:
-            username_field.send_keys(char)
-            time.sleep(0.08)
-        for char in password:
-            password_field.send_keys(char)
-            time.sleep(0.08)
+        # Use human-like typing
+        human_type(username_field, username)
+        human_type(password_field, password)
 
         login_button = WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.XPATH, '//button[@type="submit"]'))
         )
-        time.sleep(1 + random.random())
+
+        human_delay(1, 1.5)
         login_button.click()
-        time.sleep(3)
+        human_delay(2.5, 2.5)
 
     except TimeoutException:
         logging.warning("⚠️ Login form not found. Aborting login.")
         return False
 
-    # --- Checkpoint/Captcha ---
+    # --- Checkpoint/Captcha handling ---
     for _ in range(3):
         page_source = driver.page_source.lower()
         current_url = driver.current_url
@@ -60,7 +59,7 @@ def login_to_linkedin(driver, username, password):
                 return True
             else:
                 logging.warning("❌ Still not logged in.")
-                time.sleep(2)
+                human_delay(1.5, 1.5)
         else:
             break
 

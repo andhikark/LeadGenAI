@@ -72,7 +72,7 @@ def get_linkedin_info_batch():
         if not isinstance(data_list, list):
             return jsonify({"error": "Expected a list of objects"}), 400
 
-        driver = get_chrome_driver(headless=False)
+        driver = get_chrome_driver(headless=True)
 
         # 🧠 (Optional): Use env vars for username/password
         login_to_linkedin(driver, "", "")  # Replace with session/cookies in production
@@ -100,4 +100,4 @@ def get_linkedin_info_batch():
 
 
 if __name__ == "__main__":
-    app.run(debug=True,use_reloader=False, port=5000)
+    app.run(debug=True, port=5000)

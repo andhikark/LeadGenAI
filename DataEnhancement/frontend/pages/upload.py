@@ -2,6 +2,10 @@ import streamlit as st
 import pandas as pd
 import requests
 
+if "logged_in" not in st.session_state or not st.session_state.logged_in:
+    st.warning("Please log in first.")
+    st.stop()
+    
 st.set_page_config(page_title="📤 Upload CSV & Normalize", layout="wide")
 st.title("📤 Upload & Normalize Lead Data")
 st.markdown("""
@@ -17,7 +21,7 @@ if "confirmed_selection_df" not in st.session_state:
 STANDARD_COLUMNS = [
     'Company', 'City', 'State', 'First Name', 'Last Name', 'Email', 'Title', 'Website',
     'LinkedIn URL', 'Industry ', 'Revenue', 'Product/Service Category',
-    'Business Type (B2B, B2B2C) ', 'Employees count', 'Employees range', 'Rev Source', 'Year Founded',
+    'Business Type (B2B, B2B2C) ', 'Associated Members', 'Employees range', 'Rev Source', 'Year Founded',
     "Owner's LinkedIn", 'Owner Age', 'Phone Number', 'Additional Notes', 'Score',
     'Email customization #1', 'Subject Line #1', 'Email Customization #2', 'Subject Line #2',
     'LinkedIn Customization #1', 'LinkedIn Customization #2', 'Reasoning for r//y/g'
@@ -156,8 +160,10 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
                 rows_to_update.at[idx, "LinkedIn URL"] = apollo.get("linkedin_url", "") or linkedin.get("LinkedIn Link", "")
             if not row["Industry "].strip():
                 rows_to_update.at[idx, "Industry "] = linkedin.get("Industry", "")
-            if not row["Employees count"].strip():
-                rows_to_update.at[idx, "Employees count"] = linkedin.get("Company Size", "")
+            if not row["Associated Members"].strip():
+                rows_to_update.at[idx, "Associated Members"] = linkedin.get("Associated Members", "")
+            if not row["Employees range"].strip():
+                rows_to_update.at[idx, "Employees range"] = linkedin.get("Employees", "")
             if not row["Product/Service Category"].strip():
                 rows_to_update.at[idx, "Product/Service Category"] = linkedin.get("Specialties", "")
 
