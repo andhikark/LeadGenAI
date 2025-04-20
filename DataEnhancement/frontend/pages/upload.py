@@ -1,11 +1,52 @@
 import streamlit as st
+from streamlit_cookies_controller import CookieController
 import pandas as pd
 import requests
+import jwt
 
-if "logged_in" not in st.session_state or not st.session_state.logged_in:
+JWT_SECRET = "fallback_secret_change_me_in_production"
+JWT_ALGORITHM = "HS256"
+BACKEND_URL = "http://localhost:5000"
+
+cookies = CookieController()
+token = cookies.get("auth_token")
+
+if token and "logged_in" not in st.session_state:
+    try:
+        decoded = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        st.session_state.token = token
+        st.session_state.logged_in = True
+        st.session_state.username = decoded.get("username")
+    except jwt.ExpiredSignatureError:
+        cookies.delete("auth_token")
+        st.warning("Session expired.")
+        st.stop()
+    except jwt.InvalidTokenError:
+        cookies.delete("auth_token")
+        st.warning("Invalid session.")
+        st.stop()
+
+if not st.session_state.get("logged_in"):
     st.warning("Please log in first.")
     st.stop()
-    
+
+def auth_headers():
+    token = st.session_state.get("token")
+    if not token:
+        st.error("Missing token. Please log in again.")
+        st.stop()
+    return {"Authorization": f"Bearer {token}"}
+
+def normalize_name(name):
+    return name.strip().lower().replace(" ", "").replace("-", "").replace(".", "") if name else ""
+
+def generate_linkedin_lookup(response_json):
+    return {
+        normalize_name(r.get("Business Name")): r
+        for r in response_json
+        if r.get("Business Name")
+    }
+
 st.set_page_config(page_title="📤 Upload CSV & Normalize", layout="wide")
 st.title("📤 Upload & Normalize Lead Data")
 st.markdown("""
@@ -36,8 +77,6 @@ if uploaded_file:
         st.success("✅ File uploaded successfully!")
 
         st.markdown("### ✅ Step 2: Select Rows to Enhance")
-        st.markdown("Check the companies you want to enhance. Maximum **10 rows** allowed.")
-
         df['Select Row'] = False
         edited_df = st.data_editor(df, use_container_width=True, num_rows="dynamic", key="editable_df", disabled=df.columns[:-1].tolist())
         selected_df = pd.DataFrame(edited_df)
@@ -81,29 +120,22 @@ if st.session_state.confirmed_selection_df is not None:
 
     if st.button("🔄 Normalize CSV"):
         normalized_df = pd.DataFrame()
-        selected_cols = []
-
         for col in STANDARD_COLUMNS:
             if column_mapping[col] and column_mapping[col] in data_for_mapping.columns:
                 normalized_df[col] = data_for_mapping[column_mapping[col]]
-                selected_cols.append(col)
             else:
                 normalized_df[col] = ""
 
-        # Add extra columns that were not mapped
         mapped_input_columns = set(column_mapping.values())
         extra_columns = [col for col in data_for_mapping.columns if col not in mapped_input_columns and col != "Select Row"]
         for col in extra_columns:
             normalized_df[col] = data_for_mapping[col]
 
         st.session_state.normalized_df = normalized_df.copy()
+        st.markdown("### ✅ Normalized Data Preview")
+        st.dataframe(normalized_df.head(), use_container_width=True)
 
-        st.markdown("### ✅ Normalized Data Preview (Selected Rows with Standard + Extra Columns)")
-        preview_df = normalized_df.astype(str)
-        st.dataframe(preview_df.head(), use_container_width=True)
-
-        csv_download = normalized_df.to_csv(index=False).encode("utf-8")
-        st.download_button("📥 Download Normalized CSV", data=csv_download, file_name="normalized_leads.csv", mime="text/csv")
+        st.download_button("📥 Download Normalized CSV", data=normalized_df.to_csv(index=False).encode("utf-8"), file_name="normalized_leads.csv", mime="text/csv")
 
 if st.session_state.normalized_df is not None and st.session_state.confirmed_selection_df is not None:
     if st.button("🚀 Enhance with Apollo & LinkedIn Data"):
@@ -113,38 +145,36 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
 
         base_df = st.session_state.normalized_df.copy()
         confirmed_df = st.session_state.confirmed_selection_df.copy()
-
         enhanced_df = base_df.copy()
+
         mask = base_df["Company"].isin(confirmed_df["Company"])
         rows_to_update = enhanced_df[mask].copy()
 
         apollo_domains = rows_to_update["Company"].dropna().unique().tolist()
-        apollo_response = requests.post("http://localhost:5000/api/apollo-info", json=[{"domain": d} for d in apollo_domains])
+        apollo_response = requests.post(f"{BACKEND_URL}/api/apollo-info", json=[{"domain": d} for d in apollo_domains], headers=auth_headers())
         apollo_lookup = {r["domain"]: r for r in apollo_response.json() if "domain" in r}
 
-        # 👇 Safe JSON payload
         linkedin_payload = [
             {
-                "company": str(row.get("Company", "") or ""),
-                "city": str(row.get("City", "") or ""),
-                "state": str(row.get("State", "") or ""),
-                "website": str(row.get("Website", "") or "")
+                "company": str(row.get("Company", "")),
+                "city": str(row.get("City", "")),
+                "state": str(row.get("State", "")),
+                "website": str(row.get("Website", ""))
             }
             for _, row in rows_to_update.iterrows()
         ]
-
-        linkedin_response = requests.post("http://localhost:5000/api/linkedin-info-batch", json=linkedin_payload)
-        linkedin_lookup = {r.get("company"): r for r in linkedin_response.json() if "company" in r}
+        linkedin_response = requests.post(f"{BACKEND_URL}/api/linkedin-info-batch", json=linkedin_payload, headers=auth_headers())
+        linkedin_lookup = generate_linkedin_lookup(linkedin_response.json())
 
         for i, (idx, row) in enumerate(rows_to_update.iterrows()):
             domain = row["Company"]
             apollo = apollo_lookup.get(domain, {})
-            linkedin = linkedin_lookup.get(domain, {})
+            linkedin = linkedin_lookup.get(normalize_name(domain), {})
 
             revenue = apollo.get("annual_revenue_printed", "")
             if not revenue:
                 try:
-                    growjo_response = requests.get("http://localhost:5000/api/get-revenue", params={"company": domain})
+                    growjo_response = requests.get(f"{BACKEND_URL}/api/get-revenue", params={"company": domain}, headers=auth_headers())
                     if growjo_response.status_code == 200:
                         revenue = growjo_response.json().get("estimated_revenue", "")
                 except:
@@ -173,6 +203,6 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
         enhanced_df.update(rows_to_update)
 
         st.success("✅ Enrichment complete!")
-        st.dataframe(enhanced_df.astype(str).head(), use_container_width=True)
+        st.dataframe(enhanced_df.head(), use_container_width=True)
         csv = enhanced_df.to_csv(index=False).encode("utf-8")
         st.download_button("📥 Download Enhanced CSV", csv, file_name="apollo_linkedin_enriched.csv", mime="text/csv")

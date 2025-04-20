@@ -5,27 +5,26 @@ import random
 import re
 from urllib.parse import urlparse
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
 
-from .utils import extract_domain, get_name_parts
+from .utils import extract_domain
 from .navigation import search_company_links, select_company_link
 from .companyDetails import extract_company_details
-from ..utils.chromeUtils import DEBUG_FOLDER
-from ..utils.locationUtils import city_names_match
 from .login import login_to_linkedin
+from ..utils.chromeUtils import get_chrome_driver
+from ..utils.proxyUtils import generate_smartproxy_url
+from dotenv import load_dotenv
 
+load_dotenv()
+USERNAME = os.getenv("LINKEDIN_USERNAME") or "leadgenraf2@gmail.com"
+PASSWORD = os.getenv("LINKEDIN_PASSWORD") or "123Testing90."
 
 def slugify_company_name(name):
     return re.sub(r'[^a-z0-9-]', '', name.lower().replace(" ", "-"))
 
-
 def is_login_form(driver):
-    """
-    Detects if the current page displays a LinkedIn login form.
-    """
     try:
         driver.find_element(By.ID, "username")
         driver.find_element(By.ID, "password")
@@ -33,11 +32,7 @@ def is_login_form(driver):
     except NoSuchElementException:
         return False
 
-
 def detect_page_type(driver):
-    """
-    Classify current page as 'signup', 'login', 'about', or 'other'.
-    """
     url = driver.current_url
     path = urlparse(url).path.lower()
     if path.startswith("/signup"):
@@ -48,186 +43,101 @@ def detect_page_type(driver):
         return "about"
     return "other"
 
-
 def wait_for_page_load(driver, timeout=3):
-    """
-    Wait until document.readyState == 'complete', then short jitter.
-    """
     try:
         WebDriverWait(driver, timeout).until(
             lambda d: d.execute_script("return document.readyState") == "complete"
         )
     except:
-        logging.debug("Page load wait timed out, proceeding anyway.")
+        logging.debug("Page load wait timed out.")
     time.sleep(random.uniform(0.5, 1.0))
 
-def scrape_linkedin(driver, business_name, expected_city=None, expected_state=None, expected_website=None):
-    """
-    Sequential LinkedIn scraper with explicit waits and dynamic throttling.
-    Returns company details or delegates to fallback.
-    """
+def scrape_linkedin(driver, business_name, expected_city=None, expected_state=None, expected_website=None, logged_in=False):
     try:
-        logging.info(f"🔍 Scraping LinkedIn for {business_name}")
+        if not logged_in:
+            logging.info("🔐 Attempting login...")
+            if not login_to_linkedin(driver, USERNAME, PASSWORD):
+                return {"Business Name": business_name, "Error": "Login failed"}
+            logged_in = True
 
+        logging.info(f"🔍 Scraping LinkedIn for {business_name}")
         slug = slugify_company_name(business_name)
         about_url = f"https://www.linkedin.com/company/{slug}/about/"
         expected_domain = extract_domain(expected_website) if expected_website else None
 
-        # 1) Go to About
         driver.get(about_url)
-
-        # 1a) If LinkedIn redirects to /company/unavailable, bail to fallback
         parsed = urlparse(driver.current_url)
         if parsed.path.startswith("/company/unavailable"):
             logging.info("⚠️ Company page unavailable, using fallback.")
             return _fallback_scrape(driver, business_name, expected_city, expected_state, expected_domain)
 
-        # 1b) If we’re already on the About page, skip any waits and scrape immediately
         if detect_page_type(driver) == "about":
-            logging.info("✅ Landed on About directly, extracting details now.")
+            logging.info("✅ Landed on About directly.")
             details = extract_company_details(driver, about_url, business_name, fast=True)
-            core = ["Company Website", "Company Size", "Headquarters", "Industry", "Founded"]
-            if all(details.get(k) in (None, "", "Not found") for k in core):
-                logging.info("⚠️ Missing core fields on direct About, fallback.")
+            if _missing_core(details):
+                logging.info("⚠️ Missing details, fallback triggered.")
                 return _fallback_scrape(driver, business_name, expected_city, expected_state, expected_domain)
-            domain_match = extract_domain(details.get("Company Website") or "")
-            return {
-            "Business Name": business_name,
-            "LinkedIn Link": about_url,
-            **details,
-            "Location Match": "Direct",
-            "Domain Match": (
-                "Matched" if expected_domain and domain_match == expected_domain else "Mismatch"
-            )
-        }
+            return _build_result(details, business_name, about_url, expected_domain)
 
-        # 2) Otherwise wait and go through the usual signup/login/fallback flow
-        wait_for_page_load(driver)
-        page = detect_page_type(driver)
-
-        if page in ["signup", "login"]:
-            logging.info(f"🔐 Detected {page} page. Attempting automatic login...")
-            success = login_to_linkedin(driver, USERNAME, PASSWORD)
-            if not success:
-                logging.warning("❌ Auto-login failed. Aborting.")
-                return {"Business Name": business_name, "Error": "Auto-login failed"}
-
-            # Retry About page after login
-            driver.get(about_url)
-            wait_for_page_load(driver)
-            parsed = urlparse(driver.current_url)
-
-            if parsed.path.startswith("/company/unavailable"):
-                logging.info("⚠️ Company page unavailable after login, using fallback.")
-                return _fallback_scrape(driver, business_name, expected_city, expected_state, expected_domain)
-
-            page = detect_page_type(driver)
-
-
-        if page != "about":
-            logging.warning(f"🚫 Landed on {page}, using fallback.")
-            return _fallback_scrape(driver, business_name, expected_city, expected_state, expected_domain)
-
-        # 3) Now extract (after login flow)
-        details = extract_company_details(driver, about_url, business_name)
-        core = ["Company Website", "Company Size", "Headquarters", "Industry", "Founded"]
-        if all(details.get(k) in (None, "", "Not found") for k in core):
-            logging.info("⚠️ Missing core fields, fallback.")
-            return _fallback_scrape(driver, business_name, expected_city, expected_state, expected_domain)
-        domain_match = extract_domain(details.get("Company Website") or "")
-        return {
-            "Business Name": business_name,
-            "LinkedIn Link": about_url,
-            **details,
-            "Location Match": "Direct",
-            "Domain Match": (
-                "Matched" if expected_domain and domain_match == expected_domain else "Mismatch"
-            )
-        }
+        logging.warning(f"🚫 Unexpected page ({driver.current_url}), using fallback.")
+        return _fallback_scrape(driver, business_name, expected_city, expected_state, expected_domain)
 
     except Exception as e:
-        logging.error(f"Error scraping {business_name}: {e}", exc_info=True)
+        logging.error(f"Unhandled scrape error for {business_name}: {e}", exc_info=True)
         return {"Business Name": business_name, "Error": str(e)}
 
-
 def _fallback_scrape(driver, business_name, expected_city, expected_state, expected_domain):
-    """
-    Fallback via LinkedIn search: on each shortened query, pick the very first result immediately.
-    """
     driver.implicitly_wait(1)
     try:
         tokens = business_name.split()
         for i in range(len(tokens) - 1, 0, -1):
             query = " ".join(tokens[:i])
-            url = (
-                "https://www.linkedin.com/search/results/companies/"
-                f"?keywords={query.replace(' ', '%20')}"
-            )
-            logging.info(f"🔎 Fallback search for '{query}'")
-            driver.get(url)
+            search_url = f"https://www.linkedin.com/search/results/companies/?keywords={query.replace(' ', '%20')}"
+            logging.info(f"🔍 Fallback search for '{query}'")
+            driver.get(search_url)
 
-            # wait up to 5s for first company-link
             try:
-                first_link = WebDriverWait(driver, 5).until(
-                    EC.presence_of_element_located((
-                        By.XPATH,
-                        "//div[contains(@class,'search-results')]//a[contains(@href,'/company/')]"
-                    ))
-                )
+                first_link = WebDriverWait(driver, 5).until(EC.presence_of_element_located(
+                    (By.XPATH, "//div[contains(@class,'search-results')]//a[contains(@href,'/company/')]")))
             except TimeoutException:
-                logging.debug(f"No results for '{query}' within 5s")
                 continue
 
             href = first_link.get_attribute("href")
             if not href:
-                logging.debug(f"First link missing href for '{query}'")
                 continue
 
-            # ← insert random pause here!
-            pause = random.uniform(1.5, 3.0)
-            logging.debug(f"⏱️ Pausing {pause:.2f}s before navigating to About")
-            time.sleep(pause)
-
-            # go to its About page
-            about_page = href.rstrip("/") + "/about/"
-            logging.info(f"→ Navigating to first result: {about_page}")
-            driver.get(about_page)
+            time.sleep(random.uniform(1.5, 3.0))
+            driver.get(href.rstrip("/") + "/about/")
             wait_for_page_load(driver)
 
             details = extract_company_details(driver, driver.current_url, business_name)
-            domain = extract_domain(details.get("Company Website") or "")
+            return _build_result(details, business_name, driver.current_url, expected_domain, query)
 
-            return {
-            "Business Name": business_name,
-            "LinkedIn Link": driver.current_url,
-            **details,
-            "Location Match": f"Fallback({query})",
-            "Domain Match": (
-                "Matched" if expected_domain and domain == expected_domain else "Mismatch"
-            )
-        }
-
-        logging.error(f"🛑 Fallback exhausted for {business_name}")
-        return _empty_result(f"No results for {business_name}")
+        logging.error("❌ Fallback exhausted.")
+        return _empty_result("No results")
 
     except Exception as e:
-        logging.error(f"Fallback error for {business_name}: {e}", exc_info=True)
+        logging.error(f"Fallback failed for {business_name}: {e}", exc_info=True)
         return {"Business Name": business_name, "Error": str(e)}
-
     finally:
         driver.implicitly_wait(10)
 
+def _missing_core(details):
+    core = ["Company Website", "Company Size", "Headquarters", "Industry", "Founded"]
+    return all(details.get(k) in (None, "", "Not found") for k in core)
 
-def has_no_results(driver):
-    try:
-        return bool(driver.find_elements(
-            By.XPATH, "//h2[contains(@class,'artdeco-empty-state__headline')]"
-        ))
-    except Exception:
-        return False
+def _build_result(details, business_name, url, expected_domain, fallback_query=None):
+    domain = extract_domain(details.get("Company Website") or "")
+    result = {
+        "Business Name": business_name,
+        "LinkedIn Link": url,
+        **details,
+        "Location Match": f"Fallback({fallback_query})" if fallback_query else "Direct",
+        "Domain Match": "Matched" if expected_domain and domain == expected_domain else "Mismatch"
+    }
+    return result
 
-
-def _empty_result(reason="No results"):
+def _empty_result(reason):
     return {
         "LinkedIn Link": None,
         "Company Website": None,

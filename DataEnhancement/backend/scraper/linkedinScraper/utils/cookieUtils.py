@@ -10,7 +10,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import WebDriverException
 from selenium_stealth import stealth
-from ..utils.proxyUtils import format_proxy_for_chrome
+from linkedinScraper.utils.proxyUtils import format_proxy_for_chrome
 
 
 # Configurable constants
@@ -80,7 +80,7 @@ def is_driver_active(driver):
         return False
 
 def get_chrome_driver(headless=False, max_retries=3, proxy_url=None):
-    from ..utils.proxyUtils import SMARTPROXY_USER, SMARTPROXY_PASS, SMARTPROXY_GATEWAY, SMARTPROXY_PORT
+    from backend.linkedinScraper.utils.proxyUtils import SMARTPROXY_USER, SMARTPROXY_PASS, SMARTPROXY_GATEWAY, SMARTPROXY_PORT
 
     default_user_agent = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -197,6 +197,7 @@ def create_proxy_auth_extension(proxy_host, proxy_port, proxy_user, proxy_pass):
         );
     }});
     """
+
 
     plugin_file = f"smartproxy_auth_{''.join(random.choices(string.ascii_lowercase, k=5))}.zip"
     temp_dir = tempfile.gettempdir()
