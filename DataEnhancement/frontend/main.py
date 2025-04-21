@@ -1,4 +1,9 @@
+
 import streamlit as st
+
+if "logged_in" not in st.session_state or not st.session_state.logged_in:
+    st.warning("Please log in first.")
+    st.stop()
 
 st.set_page_config(page_title="Company Intelligence Tool", layout="wide")
 
