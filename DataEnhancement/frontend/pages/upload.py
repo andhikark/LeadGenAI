@@ -1,3 +1,4 @@
+
 import streamlit as st
 from streamlit_cookies_controller import CookieController
 import pandas as pd
@@ -47,11 +48,20 @@ def generate_linkedin_lookup(response_json):
         if r.get("Business Name")
     }
 
+def split_name(full_name):
+    parts = full_name.strip().split()
+    if len(parts) == 0:
+        return "", ""
+    elif len(parts) == 1:
+        return parts[0], ""
+    else:
+        return parts[0], " ".join(parts[1:])
+
 st.set_page_config(page_title="📤 Upload CSV & Normalize", layout="wide")
 st.title("📤 Upload & Normalize Lead Data")
 st.markdown("""
 Welcome! This tool allows you to upload a CSV file and normalize its structure 
-to match our standard format, and enrich it with Apollo and LinkedIn data.
+to match our standard format, and enrich it with Apollo, LinkedIn, and Growjo data.
 """)
 
 if "normalized_df" not in st.session_state:
@@ -138,7 +148,7 @@ if st.session_state.confirmed_selection_df is not None:
         st.download_button("📥 Download Normalized CSV", data=normalized_df.to_csv(index=False).encode("utf-8"), file_name="normalized_leads.csv", mime="text/csv")
 
 if st.session_state.normalized_df is not None and st.session_state.confirmed_selection_df is not None:
-    if st.button("🚀 Enhance with Apollo & LinkedIn Data"):
+    if st.button("🚀 Enhance with Apollo, LinkedIn, and Growjo Data"):
         st.markdown("⏳ Please wait while we enrich company data...")
         progress_bar = st.progress(0)
         status_text = st.empty()
@@ -197,6 +207,34 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
             if not row["Product/Service Category"].strip():
                 rows_to_update.at[idx, "Product/Service Category"] = linkedin.get("Specialties", "")
 
+            # === Growjo Contact Info Integration ===
+            growjo_res = requests.post(f"{BACKEND_URL}/api/growjo", json={"company": domain, "headless": True}, headers=auth_headers())
+            if growjo_res.status_code == 200:
+                people = growjo_res.json()
+                if people:
+                    person = people[0]
+                    first, last = split_name(person.get("name", ""))
+                    contact = person.get("contact_info", "")
+                    email = ""
+                    phone = ""
+                    for line in contact.split("\n"):
+                        if "email" in line.lower():
+                            email = line.split(":")[-1].strip()
+                        if "phone" in line.lower():
+                            phone = line.split(":")[-1].strip()
+                    if not row["First Name"].strip():
+                        rows_to_update.at[idx, "First Name"] = first
+                    if not row["Last Name"].strip():
+                        rows_to_update.at[idx, "Last Name"] = last
+                    if not row["Email"].strip():
+                        rows_to_update.at[idx, "Email"] = email
+                    if not row["Phone Number"].strip():
+                        rows_to_update.at[idx, "Phone Number"] = phone
+                    if not row["Owner's LinkedIn"].strip():
+                        rows_to_update.at[idx, "Owner's LinkedIn"] = person.get("linkedin", "")
+                    if not row["Title"].strip():
+                        rows_to_update.at[idx, "Title"] = person.get("title", "")
+
             progress_bar.progress((i + 1) / len(rows_to_update))
             status_text.text(f"Enhanced {i + 1} of {len(rows_to_update)} rows")
 
@@ -205,4 +243,4 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
         st.success("✅ Enrichment complete!")
         st.dataframe(enhanced_df.head(), use_container_width=True)
         csv = enhanced_df.to_csv(index=False).encode("utf-8")
-        st.download_button("📥 Download Enhanced CSV", csv, file_name="apollo_linkedin_enriched.csv", mime="text/csv")
+        st.download_button("📥 Download Enhanced CSV", csv, file_name="apollo_linkedin_growjo_enriched.csv", mime="text/csv")
