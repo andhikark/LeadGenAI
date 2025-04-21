@@ -16,7 +16,7 @@ from .utils.proxyUtils import generate_smartproxy_url
 load_dotenv()
 CSV_INPUT = "input/sample_data1.csv"
 CSV_OUTPUT_BASE = "output/linkedin_scraped_results"
-USERNAME = os.getenv("LINKEDIN_USERNAME") or "leadgenraf2@gmail.com"
+USERNAME = os.getenv("LINKEDIN_USERNAME") or "rithik2112004@gmail.com"
 PASSWORD = os.getenv("LINKEDIN_PASSWORD") or "123Testing90."
 BATCH_SIZE = 10
 WAIT_BETWEEN_BATCHES = (10, 20)
