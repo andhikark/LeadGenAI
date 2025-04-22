@@ -78,6 +78,13 @@ STANDARD_COLUMNS = [
     'LinkedIn Customization #1', 'LinkedIn Customization #2', 'Reasoning for r//y/g'
 ]
 
+st.markdown("### 🔐 LinkedIn Token")
+li_token = st.text_input("LinkedIn Token", placeholder="please input your li token here")
+
+if st.button("💾 Save LinkedIn Token"):
+    st.success("✅ LinkedIn token saved.")
+
+
 st.markdown("### 📎 Step 1: Upload Your CSV")
 uploaded_file = st.file_uploader("Choose a CSV file to upload", type=["csv"])
 
@@ -91,7 +98,6 @@ if uploaded_file:
         edited_df = st.data_editor(df, use_container_width=True, num_rows="dynamic", key="editable_df", disabled=df.columns[:-1].tolist())
         selected_df = pd.DataFrame(edited_df)
         rows_to_enhance = selected_df[selected_df['Select Row'] == True].drop(columns=['Select Row'])
-
         selected_count = len(rows_to_enhance)
         st.markdown(f"**🧮 Selected Rows: `{selected_count}` / 10**")
 
@@ -173,8 +179,20 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
             }
             for _, row in rows_to_update.iterrows()
         ]
-        linkedin_response = requests.post(f"{BACKEND_URL}/api/linkedin-info-batch", json=linkedin_payload, headers=auth_headers())
+        linkedin_payload_wrapped = {
+            "li_at": li_token,
+            "data": linkedin_payload
+        }
+
+        linkedin_response = requests.post(
+            f"{BACKEND_URL}/api/linkedin-info-batch",
+            json=linkedin_payload_wrapped,
+            headers=auth_headers()
+        )
+        print("This is linkedin response")
+        print(linkedin_response)
         linkedin_lookup = generate_linkedin_lookup(linkedin_response.json())
+        print(linkedin_lookup)
 
         for i, (idx, row) in enumerate(rows_to_update.iterrows()):
             domain = row["Company"]

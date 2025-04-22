@@ -10,7 +10,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException,StaleElementReferenceException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException
+
 # Load environment variables
 load_dotenv()
 
@@ -30,7 +31,7 @@ class GrowjoScraper:
     def __init__(self, headless=False):
         """Initialize the scraper with browser settings."""
         self.setup_browser(headless)
-        self.wait = WebDriverWait(self.driver, 20)  # Increased timeout to 20 seconds
+        self.wait = WebDriverWait(self.driver, 10)  # Increased timeout to 10 seconds
         self.logged_in = False
         
     def setup_browser(self, headless):
@@ -60,6 +61,11 @@ class GrowjoScraper:
             
             # Wait for page to load completely
             time.sleep(5)
+            
+            # Save page source for debugging
+            with open("login_page.html", "w", encoding="utf-8") as f:
+                f.write(self.driver.page_source)
+                # DEBUG: Saving HTML of login page to diagnose possible login form structure issues
                 
             print("Page title:", self.driver.title)
             print("Current URL:", self.driver.current_url)
@@ -112,6 +118,10 @@ class GrowjoScraper:
             
         except Exception as e:
             print(f"Login failed with exception: {str(e)}")
+            # Save screenshot for debugging
+            self.driver.save_screenshot("login_error.png")
+            print("Screenshot saved as login_error.png")
+            # DEBUG: Capturing screenshot of failed login attempt to visually inspect the page state
             
             # Try direct navigation as a last resort
             try:
@@ -152,6 +162,11 @@ class GrowjoScraper:
                         search_box = self.wait.until(EC.presence_of_element_located(
                             (By.CSS_SELECTOR, "input.search-input, input.form-control, input.search")))
                     except TimeoutException:
+                        # Save page source for debugging
+                        with open("search_page.html", "w", encoding="utf-8") as f:
+                            f.write(self.driver.page_source)
+                        self.driver.save_screenshot("search_page.png")
+                        # DEBUG: Saving HTML and screenshot of search page to identify search input elements
                         
                         # Try to find all inputs for debugging
                         inputs = self.driver.find_elements(By.TAG_NAME, "input")
@@ -170,6 +185,11 @@ class GrowjoScraper:
             # Wait for search results to load
             time.sleep(5)
             
+            # Save search results page for debugging
+            self.driver.save_screenshot("search_results.png")
+            with open("search_results.html", "w", encoding="utf-8") as f:
+                f.write(self.driver.page_source)
+            # DEBUG: Saving HTML and screenshot of search results to analyze result structure and verify company matches
             
             # Try different methods to find the company link
             try:
@@ -199,11 +219,17 @@ class GrowjoScraper:
             print(f"Found company: {company_link.text}")
             company_link.click()
             time.sleep(5)
+            
+            # Save company page for debugging
+            self.driver.save_screenshot("company_page.png")
+            with open("company_page.html", "w", encoding="utf-8") as f:
+                f.write(self.driver.page_source)
                 
             return True
                 
         except Exception as e:
             print(f"Error searching for company: {str(e)}")
+            self.driver.save_screenshot("search_error.png")
             return False
     
     def is_phone_number(self, text):
@@ -234,7 +260,6 @@ class GrowjoScraper:
                 # Look for table with headers "Name", "Title", "Email/Phone"
                 people_table = self.wait.until(EC.presence_of_element_located(
                     (By.XPATH, "//table[contains(@class, 'table') and .//th[contains(text(), 'Name')] and .//th[contains(text(), 'Title')] and .//th[contains(text(), 'Email/Phone')]]")))
-                rows = people_table.find_elements(By.TAG_NAME, "tr")[1:]
                 print("Found decision makers table!")
             except TimeoutException:
                 # Try a more generic approach
@@ -264,18 +289,8 @@ class GrowjoScraper:
                     # Get fresh reference to table and rows each time
                     try:
                         # Look for table with headers "Name", "Title", "Email/Phone"
-                        # Wait for any previous row to go stale (optional but useful after .back())
-                        if idx > 0 and 'row' in locals():
-                            try:
-                                self.wait.until(EC.staleness_of(row))
-                            except:
-                                pass
-
-                        # Re-fetch table and rows
                         people_table = self.wait.until(EC.presence_of_element_located(
                             (By.XPATH, "//table[contains(@class, 'table') and .//th[contains(text(), 'Name')] and .//th[contains(text(), 'Title')] and .//th[contains(text(), 'Email/Phone')]]")))
-                        current_rows = people_table.find_elements(By.TAG_NAME, "tr")[1:]
-
                         
                         # Get all rows again (skip header)
                         current_rows = people_table.find_elements(By.TAG_NAME, "tr")[1:]
@@ -365,6 +380,14 @@ class GrowjoScraper:
                                 self.driver.get(employee_url)
                                 time.sleep(2)
                                 
+                                # Save employee page HTML for analysis
+                                employee_name_safe = name.replace(" ", "_").replace("/", "_")
+                                with open(f"employee_{employee_name_safe}.html", "w", encoding="utf-8") as f:
+                                    f.write(self.driver.page_source)
+                                self.driver.save_screenshot(f"employee_{employee_name_safe}_before.png")
+                                print(f"Saved employee page HTML and screenshot for {name}")
+                                # DEBUG: Saving HTML and screenshot of employee page before revealing contact info to examine initial state
+                                
                                 # Extract LinkedIn URL from the employee page - this is more accurate than from company page
                                 linkedin_url = ""
                                 try:
@@ -401,6 +424,10 @@ class GrowjoScraper:
                                                 time.sleep(2)  # Wait for reveal
                                             except Exception as e:
                                                 print(f"Failed to click reveal button: {str(e)}")
+                                        
+                                        # Save screenshot after clicking reveal
+                                        self.driver.save_screenshot(f"employee_{employee_name_safe}_after.png")
+                                        # DEBUG: Capturing screenshot after reveal button click to verify contact info exposure
                                     
                                     # Look for revealed contact info
                                     # Email is often in elements with data attributes or specific classes
@@ -441,14 +468,25 @@ class GrowjoScraper:
                                                 
                                         # If no phone found yet, try the generic approach
                                         if not phone:
-                                            # Target div with class="head" and "wpr" as specified by user
+                                            # Target div with class="head" and "wpr" as specified
+                                            # Only look for phone elements within the contact-info section
+                                            # and make sure we're not in a company section
                                             phone_elements = self.driver.find_elements(By.XPATH, 
-                                                "//div[contains(@class, 'head')]//div[contains(@class, 'wpr')]//*[contains(text(), '(') or contains(text(), '+') or contains(text(), '-')] | //*[contains(@class, 'phone')] | //*[contains(text(), '(') and contains(text(), ')')]")
+                                                "//div[contains(@class, 'contact-info')]//div[contains(@class, 'wpr')]//*[contains(text(), '(') or contains(text(), '+') or contains(text(), '-')] | //div[contains(@class, 'contact-info')]//*[contains(@class, 'phone')] | //div[contains(@class, 'contact-info')]//*[contains(text(), '(') and contains(text(), ')')]")
                                             
                                             for elem in phone_elements:
                                                 text = elem.text.strip()
                                                 # Check if text is a phone number
                                                 if self.is_phone_number(text):
+                                                    # Make sure we're not in a company section
+                                                    parent_text = self.driver.execute_script(
+                                                        "return arguments[0].parentElement.parentElement.textContent;", 
+                                                        elem
+                                                    )
+                                                    if parent_text and "company" in parent_text.lower():
+                                                        print(f"Skipping company phone: {text}")
+                                                        continue
+                                                        
                                                     phone = text
                                                     print(f"Found phone: {phone}")
                                                     break
@@ -458,16 +496,6 @@ class GrowjoScraper:
                                                 if href and 'tel:' in href:
                                                     phone = href.replace('tel:', '').strip()
                                                     print(f"Found phone from href: {phone}")
-                                                    break
-                                                    
-                                        # Check any link text that could be a phone number
-                                        if not phone:
-                                            all_links = self.driver.find_elements(By.TAG_NAME, "a")
-                                            for link in all_links:
-                                                text = link.text.strip()
-                                                if text and self.is_phone_number(text):
-                                                    phone = text
-                                                    print(f"Found phone from link text: {phone}")
                                                     break
                                     except Exception as e:
                                         print(f"Error extracting phone: {str(e)}")
@@ -495,6 +523,16 @@ class GrowjoScraper:
                                                     # Check each line to see if it's a phone number
                                                     for line in div_text.split('\n'):
                                                         if self.is_phone_number(line):
+                                                            # Skip if this is in a company section
+                                                            parent_elem = self.driver.execute_script(
+                                                                "return arguments[0].parentElement.parentElement.textContent;", 
+                                                                div
+                                                            )
+                                                            if parent_elem and ("company" in parent_elem.lower() or 
+                                                                              "numbers" in parent_elem.lower()):
+                                                                print(f"Skipping likely company phone: {line}")
+                                                                continue
+                                                                
                                                             phone = line.strip()
                                                             print(f"Found phone from div.wpr: {phone}")
                                                             break
@@ -520,6 +558,10 @@ class GrowjoScraper:
                                             if not phone:
                                                 for line in text.split('\n'):
                                                     if self.is_phone_number(line):
+                                                        # Skip if this contains company-related text
+                                                        if "company" in text.lower() or "numbers" in text.lower():
+                                                            print(f"Skipping company phone from contact section: {line}")
+                                                            continue
                                                         phone = line.strip()
                                                         print(f"Found phone from contact section: {phone}")
                                                         break
@@ -530,13 +572,54 @@ class GrowjoScraper:
                                 contact_info = ""
                                 if email:
                                     contact_info += f"Email: {email}\n"
+                                
+                                # Filter out company phone numbers by checking for patterns in surrounding text
+                                if phone:
+                                    # Check phone isn't from a company section by looking at the page again
+                                    phone_element = None
+                                    try:
+                                        # Find elements containing the phone number
+                                        phone_elements = self.driver.find_elements(By.XPATH, 
+                                            f"//*[contains(text(), '{phone}')]")
+                                        
+                                        for elem in phone_elements:
+                                            # Check if this element or any parent contains company-related text
+                                            parent_content = self.driver.execute_script(
+                                                """
+                                                let element = arguments[0];
+                                                let text = '';
+                                                // Check up to 3 levels of parents
+                                                for (let i = 0; i < 3; i++) {
+                                                    if (!element) break;
+                                                    text += element.textContent || '';
+                                                    element = element.parentElement;
+                                                }
+                                                return text;
+                                                """, 
+                                                elem
+                                            )
+                                            
+                                            if parent_content and (
+                                                "company" in parent_content.lower() or 
+                                                "company phone" in parent_content.lower() or
+                                                "phone numbers" in parent_content.lower()
+                                            ):
+                                                print(f"Identified {phone} as a company phone number from context - skipping")
+                                                phone = None
+                                                break
+                                    except Exception as e:
+                                        print(f"Error during final phone verification: {str(e)}")
+                                
+                                # Now add phone to contact info if it's still valid
                                 if phone:
                                     contact_info += f"Phone: {phone}\n"
+                                else:
+                                    contact_info += "Phone: not found\n"
                                     
-                                # If we still have no contact info, save any text that might be helpful
-                                if not contact_info:
+                                # If we have no meaningful contact info at all
+                                if not email and not phone:
                                     try:
-                                        contact_info = "Could not extract specific contact info. Page saved to employee HTML file."
+                                        contact_info = "Email: not found\nPhone: not found"
                                     except:
                                         pass
                                     
@@ -570,6 +653,7 @@ class GrowjoScraper:
             
         except Exception as e:
             print(f"Error getting decision makers: {str(e)}")
+            self.driver.save_screenshot("decision_makers_error.png")
             return []
     
     def scrape_company(self, company_name):
@@ -587,8 +671,6 @@ class GrowjoScraper:
             # Add company name to each decision maker
             for dm in decision_makers:
                 dm["company"] = company_name
-
-            self.driver.get(GROWJO_SEARCH_URL)
                 
             return decision_makers
         

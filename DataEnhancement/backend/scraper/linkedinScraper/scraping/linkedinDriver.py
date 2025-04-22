@@ -1,6 +1,6 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from .utils.chromeUtils import find_available_port, is_driver_active, save_chrome_info, load_chrome_info
+from backend.linkedinScraper.utils.chromeUtils import find_available_port, is_driver_active, save_chrome_info, load_chrome_info
 import os
 
 def init_driver(global_driver, chrome_info_file, user_data_dir="chrome_user_data"):

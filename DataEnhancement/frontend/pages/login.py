@@ -6,7 +6,6 @@ from streamlit_cookies_controller import CookieController
 st.set_page_config(page_title="🔐 Login", layout="centered")
 
 BACKEND_URL = "http://localhost:5000"
-JWT_SECRET = "fallback_secret_change_me_in_production"  
 JWT_ALGORITHM = "HS256"
 
 cookies = CookieController()
@@ -14,16 +13,14 @@ token = cookies.get("auth_token")
 
 if token and "logged_in" not in st.session_state:
     try:
-        decoded = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        # Decode token without verifying signature
+        decoded = jwt.decode(token, options={"verify_signature": False})
         st.session_state.logged_in = True
         st.session_state.token = token
         st.session_state.username = decoded.get("username")
-    except jwt.ExpiredSignatureError:
+    except Exception:
         cookies.delete("auth_token")
-        st.warning("Session expired. Please log in again.")
-    except jwt.InvalidTokenError:
-        cookies.delete("auth_token")
-        st.warning("Invalid token. Please log in again.")
+        st.warning("Invalid or expired session. Please log in again.")
 
 def login_form():
     st.markdown("""
@@ -75,14 +72,13 @@ def login_form():
 
                 if res.status_code == 200:
                     token = res.json().get("token")
-                    decoded = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+                    decoded = jwt.decode(token, options={"verify_signature": False})
 
                     st.session_state.logged_in = True
                     st.session_state.token = token
                     st.session_state.username = decoded.get("username")
 
                     cookies.set("auth_token", token)
-
                     st.session_state.just_logged_in = True
                     st.rerun()
                 else:

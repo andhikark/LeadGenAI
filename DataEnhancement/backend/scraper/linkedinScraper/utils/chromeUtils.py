@@ -1,46 +1,57 @@
 import os
-import socket
-import json
-import logging
 import time
+import logging
 import random
+import re
+import zipfile
 import tempfile
 from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import WebDriverException
-from selenium_stealth import stealth
-from ..utils.proxyUtils import format_proxy_for_chrome
+from dotenv import load_dotenv
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+# from selenium.webdriver.common.exceptions import TimeoutException
 
+from ..utils.proxyUtils import generate_smartproxy_url, SMARTPROXY_USER
+import json
+import shutil
+import socket
+from urllib.parse import urlparse
+# Load env variables (ensure LI_AT is available)
+load_dotenv()
 
 # Configurable constants
 DEBUG_PORT_START = 9222
-DEBUG_PORT_END = 9230
+DEBUG_PORT_END = 9280
 DEBUG_FOLDER = Path("backend/linkedinScraper/debug")
 CHROME_INFO_FILE = DEBUG_FOLDER / "chrome_debug_info.json"
-SMARTPROXY_USER = os.getenv("SMARTPROXY_USERNAME", "spvy76kscp")
-SMARTPROXY_PASS = os.getenv("SMARTPROXY_PASSWORD", "bCE_1m7qkO0D1lzdjf")
-SMARTPROXY_GATEWAY = os.getenv("SMARTPROXY_GATEWAY", "us.smartproxy.com")
-SMARTPROXY_PORT = int(os.getenv("SMARTPROXY_PORT", 10001))
-
-
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) …",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)…",
+    "Mozilla/5.0 (X11; Linux x86_64)…",
+    "Mozilla/5.0 (Windows NT 6.1; Win64; x64)…"
+]
 # Ensure debug folder exists
 DEBUG_FOLDER.mkdir(exist_ok=True)
 
 def is_port_available(port):
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.bind(('localhost', port))
-        s.close()
-        return True
-    except:
-        return False
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind(('localhost', port))
+            return True
+        except OSError:
+            return False
 
 def find_available_port():
     for port in range(DEBUG_PORT_START, DEBUG_PORT_END + 1):
         if is_port_available(port):
             return port
     raise RuntimeError("No available Chrome debug ports found.")
+
 
 def save_chrome_info(port, user_data_dir):
     chrome_info = {
@@ -79,131 +90,148 @@ def is_driver_active(driver):
     except:
         return False
 
-def get_chrome_driver(headless=False, max_retries=3, proxy_url=None):
-    from ..utils.proxyUtils import SMARTPROXY_USER, SMARTPROXY_PASS, SMARTPROXY_GATEWAY, SMARTPROXY_PORT
+def create_proxy_auth_extension(proxy_host, proxy_port, proxy_user, proxy_pass):
+    manifest_json = """
+    {
+      "version": "1.0.0",
+      "manifest_version": 2,
+      "name": "Smartproxy Auth Extension",
+      "permissions": [
+        "proxy", "tabs", "unlimitedStorage", "storage", "<all_urls>", "webRequest", "webRequestBlocking"
+      ],
+      "background": { "scripts": ["background.js"] }
+    }
+    """
 
-    default_user_agent = (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/134.0.0.0 Safari/537.36"
-    )
+    background_js = f"""
+    var config = {{
+        mode: "fixed_servers",
+        rules: {{
+            singleProxy: {{
+                scheme: "http",
+                host: "{proxy_host}",
+                port: parseInt({proxy_port})
+            }},
+            bypassList: ["localhost"]
+        }}
+    }};
+    chrome.proxy.settings.set({{value: config, scope: "regular"}}, function() {{}});
+    chrome.webRequest.onAuthRequired.addListener(
+        function(details, callback) {{
+            callback({{
+                authCredentials: {{
+                    username: "{proxy_user}",
+                    password: "{proxy_pass}"
+                }}
+            }});
+        }},
+        {{urls: ["<all_urls>"]}},
+        ["blocking"]
+    );
+    """
+
+    plugin_file = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+    with zipfile.ZipFile(plugin_file, 'w') as zp:
+        zp.writestr("manifest.json", manifest_json)
+        zp.writestr("background.js", background_js)
+
+    return plugin_file.name
+
+def get_chrome_driver(li_at: str, headless=False, max_retries=3):
+    """
+    Launch a Chrome WebDriver with proxy, li_at injection, and stealth settings.
+    Requires li_at to be passed explicitly.
+    """
+    if not li_at:
+        raise ValueError("❌ li_at must be provided")
+
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+    ]
 
     for attempt in range(max_retries):
         port = find_available_port()
-        logging.info(f"Launching Chrome in Incognito mode on port {port} (Attempt {attempt + 1})")
+        user_data_dir = tempfile.mkdtemp(prefix="linkedin_profile_")
 
         chrome_options = Options()
-        chrome_options.add_argument("--incognito")
         chrome_options.add_argument(f"--remote-debugging-port={port}")
+        chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
         chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument("--disable-notifications")
+        chrome_options.add_argument("--proxy-bypass-list=127.0.0.1;localhost")
+        chrome_options.add_argument(f"--user-agent={random.choice(user_agents)}")
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option("useAutomationExtension", False)
-        chrome_options.add_argument(f"--user-agent={default_user_agent}")
-
-        # 💡 Use Smartproxy auth extension if proxy_url provided
-        if proxy_url:
-            plugin_path = create_proxy_auth_extension(
-                SMARTPROXY_GATEWAY, SMARTPROXY_PORT,
-                SMARTPROXY_USER, SMARTPROXY_PASS
-            )
-            chrome_options.add_extension(plugin_path)
-            logging.info("🌐 Smartproxy authentication extension loaded.")
 
         if headless:
             chrome_options.add_argument("--headless=new")
 
+        client_id = f"client_{random.randint(1000,9999)}_{int(time.time())}"
+        proxy_url = generate_smartproxy_url(client_id)
+        parsed = urlparse(proxy_url)
+        proxy_user = parsed.username
+        proxy_pass = parsed.password
+        proxy_host = parsed.hostname
+        proxy_port = parsed.port
+
+        plugin_path = create_proxy_auth_extension(proxy_host, proxy_port, proxy_user, proxy_pass)
+        chrome_options.add_extension(plugin_path)
+
         try:
             driver = webdriver.Chrome(options=chrome_options)
+            driver.implicitly_wait(10)
 
-            # 🥷 Apply stealth mode
-            stealth(driver,
-                languages=["en-US", "en"],
-                vendor="Google Inc.",
-                platform="Win32",
-                webgl_vendor="Intel Inc.",
-                renderer="Intel Iris OpenGL Engine",
-                fix_hairline=True,
+            driver.execute_cdp_cmd(
+                "Page.addScriptToEvaluateOnNewDocument", {
+                    "source": "Object.defineProperty(navigator, 'webdriver', {get: () => false});"
+                }
             )
 
-            driver.implicitly_wait(10)
-            save_chrome_info(port, "linkedin_profile_dummy")
+            driver.execute_cdp_cmd("Network.enable", {})
+            driver.execute_cdp_cmd("Network.setCookie", {
+                "name":     "li_at",
+                "value":    li_at.strip(),
+                "domain":   ".linkedin.com",
+                "path":     "/",
+                "secure":   True,
+                "httpOnly": True,
+            })
+
+            driver.get("https://www.linkedin.com/feed")
+            time.sleep(2)
+            if "login" in driver.current_url.lower():
+                logging.warning("⚠️ Possibly not logged in after cookie injection.")
+            else:
+                logging.info("✅ Logged in; starting scraping.")
+
             return driver
 
-        except WebDriverException as e:
-            logging.error(f"Chrome launch failed (Attempt {attempt + 1}): {e}")
+        except Exception as e:
+            logging.error(f"Chrome setup failed (attempt {attempt+1}): {e}", exc_info=True)
+            shutil.rmtree(user_data_dir, ignore_errors=True)
             time.sleep(random.uniform(1.5, 3.0))
 
     raise RuntimeError("All attempts to launch Chrome driver failed.")
 
 
-def create_proxy_auth_extension(proxy_host, proxy_port, proxy_user, proxy_pass):
-    import zipfile
-    import string
-    import random
+if __name__ == "__main__":
+    li_at = os.getenv("LI_AT")
+    if not li_at:
+        print("❌ LI_AT not found in environment.")
+    else:
+        print(f"🍪 LI_AT cookie: {li_at[:6]}...{li_at[-6:]}")
 
-    manifest_json = """
-    {
-        "version": "1.0.0",
-        "manifest_version": 2,
-        "name": "Smartproxy Auth Extension",
-        "permissions": [
-            "proxy",
-            "tabs",
-            "unlimitedStorage",
-            "storage",
-            "<all_urls>",
-            "webRequest",
-            "webRequestBlocking"
-        ],
-        "background": {
-            "scripts": ["background.js"]
-        }
-    }
-    """
+    # Generate Smartproxy URL and extract IP info
+    from backend.linkedinScraper.utils.proxyUtils import generate_smartproxy_url
+    proxy_url = generate_smartproxy_url("manual_check")
+    proxy_host = re.search(r'@(.+):', proxy_url).group(1)
+    proxy_port = re.search(r':(\d+)', proxy_url).group(1)
 
-    background_js = f"""
-    chrome.runtime.onInstalled.addListener(function() {{
-        chrome.proxy.settings.set({{
-            value: {{
-                mode: "fixed_servers",
-                rules: {{
-                    singleProxy: {{
-                        scheme: "http",
-                        host: "{proxy_host}",
-                        port: {proxy_port}
-                    }},
-                    bypassList: ["localhost"]
-                }}
-            }},
-            scope: "regular"
-        }}, function() {{}});
-
-        chrome.webRequest.onAuthRequired.addListener(
-            function(details) {{
-                return {{
-                    authCredentials: {{
-                        username: "{proxy_user}",
-                        password: "{proxy_pass}"
-                    }}
-                }};
-            }},
-            {{urls: ["<all_urls>"]}},
-            ['blocking']
-        );
-    }});
-    """
-
-    plugin_file = f"smartproxy_auth_{''.join(random.choices(string.ascii_lowercase, k=5))}.zip"
-    temp_dir = tempfile.gettempdir()
-    plugin_path = os.path.join(temp_dir, plugin_file)  # ✅ platform-safe
-
-    with zipfile.ZipFile(plugin_path, 'w') as zp:
-        zp.writestr("manifest.json", manifest_json)
-        zp.writestr("background.js", background_js)
-
-    return plugin_path
+    print(f"🌐 Smartproxy IP in use: {proxy_host}:{proxy_port}")

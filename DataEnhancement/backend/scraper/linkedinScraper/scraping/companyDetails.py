@@ -34,12 +34,12 @@ def extract_company_details(driver, company_url, business_name, fast=False):
     # Dump HTML + screenshot for debugging
     timestamp = int(time.time())
     html = driver.page_source
-    try:
-        driver.save_screenshot(f"output/about_debug_{timestamp}.png")
-        with open(f"output/about_source_{timestamp}.html", "w", encoding="utf-8") as f:
-            f.write(html)
-    except Exception as e:
-        logging.warning(f"Failed to save debug output: {e}")
+    # try:
+    #     driver.save_screenshot(f"output/about_debug_{timestamp}.png")
+    #     with open(f"output/about_source_{timestamp}.html", "w", encoding="utf-8") as f:
+    #         f.write(html)
+    # except Exception as e:
+    #     logging.warning(f"Failed to save debug output: {e}")
 
     soup = BeautifulSoup(html, 'html.parser')
 
