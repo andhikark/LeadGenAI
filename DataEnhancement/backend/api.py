@@ -2,15 +2,10 @@ from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 import os
 import pandas as pd
-import asyncio
-import uuid
 import logging
 from scraper.revenueScraper import get_company_revenue_from_growjo
 from scraper.websiteNameScraper import find_company_website
 from scraper.apollo_scraper import enrich_single_company
-from scraper.linkedinScraper.scraping.scraper import scrape_linkedin
-from scraper.linkedinScraper.scraping.login import login_to_linkedin
-from scraper.linkedinScraper.utils.chromeUtils import get_chrome_driver
 from scraper.linkedinScraper.main import run_batch
 from scraper.linkedinScraper.utils.chromeUtils import CHROME_INFO_FILE
 from scraper.growjoScraper import GrowjoScraper
@@ -165,5 +160,5 @@ def scrape():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))  # Render will provide the port
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port, debug=False)
 

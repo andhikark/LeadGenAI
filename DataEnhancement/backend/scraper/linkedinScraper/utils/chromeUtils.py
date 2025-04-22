@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import WebDriverException
 from dotenv import load_dotenv
 from selenium.webdriver.support.ui import WebDriverWait
@@ -15,7 +16,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 # from selenium.webdriver.common.exceptions import TimeoutException
 
-from ..utils.proxyUtils import generate_smartproxy_url, SMARTPROXY_USER
+from ..utils.proxyUtils import generate_smartproxy_url, SMARTPROXY_USER, format_proxy_for_chrome
 import json
 import shutil
 import socket
@@ -137,7 +138,7 @@ def create_proxy_auth_extension(proxy_host, proxy_port, proxy_user, proxy_pass):
 
     return plugin_file.name
 
-def get_chrome_driver(li_at: str, headless=False, max_retries=3):
+def get_chrome_driver(li_at: str, client_id: str = "default", headless=False, max_retries=3):
     """
     Launch a Chrome WebDriver with proxy, li_at injection, and stealth settings.
     Requires li_at to be passed explicitly.
@@ -154,7 +155,10 @@ def get_chrome_driver(li_at: str, headless=False, max_retries=3):
 
     for attempt in range(max_retries):
         port = find_available_port()
-        user_data_dir = tempfile.mkdtemp(prefix="linkedin_profile_")
+        user_data_dir = "/tmp/linkedin_profile"
+        if os.path.exists(user_data_dir):
+            shutil.rmtree(user_data_dir, ignore_errors=True)
+        os.makedirs(user_data_dir, exist_ok=True)
 
         chrome_options = Options()
         chrome_options.add_argument(f"--remote-debugging-port={port}")
@@ -173,7 +177,7 @@ def get_chrome_driver(li_at: str, headless=False, max_retries=3):
         if headless:
             chrome_options.add_argument("--headless=new")
 
-        client_id = f"client_{random.randint(1000,9999)}_{int(time.time())}"
+        # Ideally passed from outside or named per batch
         proxy_url = generate_smartproxy_url(client_id)
         parsed = urlparse(proxy_url)
         proxy_user = parsed.username
@@ -182,10 +186,13 @@ def get_chrome_driver(li_at: str, headless=False, max_retries=3):
         proxy_port = parsed.port
 
         plugin_path = create_proxy_auth_extension(proxy_host, proxy_port, proxy_user, proxy_pass)
-        chrome_options.add_extension(plugin_path)
+        chrome_options.add_argument(f"--proxy-server={format_proxy_for_chrome(proxy_url)}")
+
 
         try:
-            driver = webdriver.Chrome(options=chrome_options)
+            chrome_options.binary_location = "/usr/bin/chromium"
+            service = Service("/usr/bin/chromedriver")
+            driver = webdriver.Chrome(service=service, options=chrome_options)
             driver.implicitly_wait(10)
 
             driver.execute_cdp_cmd(
@@ -229,7 +236,6 @@ if __name__ == "__main__":
         print(f"🍪 LI_AT cookie: {li_at[:6]}...{li_at[-6:]}")
 
     # Generate Smartproxy URL and extract IP info
-    from backend.linkedinScraper.utils.proxyUtils import generate_smartproxy_url
     proxy_url = generate_smartproxy_url("manual_check")
     proxy_host = re.search(r'@(.+):', proxy_url).group(1)
     proxy_port = re.search(r':(\d+)', proxy_url).group(1)

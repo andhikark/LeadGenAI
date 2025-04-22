@@ -24,6 +24,9 @@ def format_proxy_for_chrome(proxy_url: str) -> str:
       input:  http://user:pass@us.smartproxy.com:10001
       output: http://us.smartproxy.com:10001
     """
+    if proxy_url.startswith("http://http://"):
+        proxy_url = proxy_url.replace("http://http://", "http://")
+    parsed = urlparse(proxy_url)
     parsed = urlparse(proxy_url)
     scheme = parsed.scheme or "http"
     host   = parsed.hostname
@@ -42,3 +45,9 @@ def build_requests_proxies(proxy_url: str) -> dict:
         "http":  proxy_url,
         "https": proxy_url,
     }
+
+if __name__ == "__main__":
+    url = generate_smartproxy_url("testclient_batch42")
+    print("✅ Full proxy:", url)
+    print("✅ Chrome flag:", format_proxy_for_chrome(url))
+    print("✅ Requests dict:", build_requests_proxies(url))

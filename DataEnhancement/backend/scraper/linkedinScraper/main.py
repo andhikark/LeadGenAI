@@ -53,7 +53,7 @@ def run_batch(
     driver = None
 
     try:
-        driver = get_chrome_driver(li_at=li_at, headless=True)
+        driver = get_chrome_driver(li_at=li_at, client_id=f"client01_batch{batch_index}", headless=True)
         driver.get("https://www.linkedin.com/feed")
         if "login" in driver.current_url.lower():
             logging.error(":x: Cookie login failed; aborting batch.")
