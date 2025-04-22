@@ -27,7 +27,8 @@ load_dotenv()
 # Configurable constants
 DEBUG_PORT_START = 9222
 DEBUG_PORT_END = 9280
-DEBUG_FOLDER = Path("backend/linkedinScraper/debug")
+DEBUG_FOLDER = Path("/tmp/linkedin_debug")
+DEBUG_FOLDER.mkdir(parents=True, exist_ok=True)
 CHROME_INFO_FILE = DEBUG_FOLDER / "chrome_debug_info.json"
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) …",
@@ -35,8 +36,7 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64)…",
     "Mozilla/5.0 (Windows NT 6.1; Win64; x64)…"
 ]
-# Ensure debug folder exists
-DEBUG_FOLDER.mkdir(exist_ok=True)
+
 
 def is_port_available(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
