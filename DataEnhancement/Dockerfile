@@ -29,4 +29,5 @@ WORKDIR /app
 EXPOSE 5000
 
 # 🚀 Launch backend Flask API
-CMD ["python3", "-m", "backend.api"]
+CMD ["python3", "backend/api.py"]
+
