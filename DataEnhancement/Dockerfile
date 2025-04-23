@@ -1,4 +1,4 @@
-FROM debian:bullseye
+FROM python:3.11-slim
 
 # 📦 Install dependencies for Nodriver + Chrome
 RUN apt-get update && apt-get install -y \
@@ -29,6 +29,5 @@ WORKDIR /app
 # 🚪 Expose Flask port
 EXPOSE 5000
 
-# 🚀 Launch backend Flask API
-CMD ["python3", "backend/api.py"]
-
+# Default entrypoint (for Render)
+CMD ["python3", "backend/api"]
