@@ -256,6 +256,17 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
             progress_bar.progress((i + 1) / len(rows_to_update))
             status_text.text(f"Enhanced {i + 1} of {len(rows_to_update)} rows")
 
+        st.markdown("### 🧠 Upload LinkedIn Session File (.dat)")
+        cookie_file = st.file_uploader("Upload your LinkedIn cookie session file (.dat)", type=["dat"])
+
+        session_path = None
+        if cookie_file is not None:
+            session_path = "/tmp/linkedin_headless_session.dat"
+            with open(session_path, "wb") as f:
+                f.write(cookie_file.read())
+            st.success("✅ Session file uploaded successfully!")
+
+
         enhanced_df.update(rows_to_update)
 
         st.success("✅ Enrichment complete!")

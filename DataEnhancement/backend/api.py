@@ -6,10 +6,11 @@ import logging
 from scraper.revenueScraper import get_company_revenue_from_growjo
 from scraper.websiteNameScraper import find_company_website
 from scraper.apollo_scraper import enrich_single_company
-from scraper.linkedinScraper.main import run_batch
-from scraper.linkedinScraper.utils.chromeUtils import CHROME_INFO_FILE
+from backend.scraper.linkedinScraper.scraper import run_batch_scraper
 from scraper.growjoScraper import GrowjoScraper
 from security import generate_token, token_required, VALID_USERS
+import tempfile
+import asyncio
 
 
 app = Flask(__name__)
@@ -92,53 +93,44 @@ class DummyTQDM:
 @app.route("/api/linkedin-info-batch", methods=["POST"])
 def get_linkedin_info_batch():
     try:
-        payload = request.get_json()
+        # Check file and form data
+        if "file" not in request.files or "csv" not in request.files:
+            return jsonify({"error": "Both 'file' (.dat) and 'csv' (.csv) must be provided"}), 400
 
-        if not isinstance(payload, dict) or "data" not in payload or "li_at" not in payload:
-            return jsonify({"error": "Expected JSON object with 'data' (list) and 'li_at' (string)"}), 400
+        cookie_file = request.files["file"]
+        csv_file = request.files["csv"]
 
-        data_list = payload["data"]
-        li_at = payload["li_at"]
+        # Save uploaded cookie file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".dat") as session_file:
+            session_path = session_file.name
+            cookie_file.save(session_path)
 
-        if not isinstance(data_list, list):
-            return jsonify({"error": "Field 'data' must be a list"}), 400
-        if not isinstance(li_at, str) or not li_at.strip():
-            return jsonify({"error": "Field 'li_at' must be a non-empty string"}), 400
+        # Save uploaded CSV file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_csv:
+            csv_path = temp_csv.name
+            csv_file.save(csv_path)
 
-        df = pd.DataFrame(data_list)
-        df.rename(columns=lambda col: col.capitalize(), inplace=True)
+        # Run async scraper in event loop
+        asyncio.run(run_batch_scraper(csv_path, session_path))
 
-        if df.empty or "Company" not in df.columns:
-            return jsonify({"error": "Missing or empty 'Company' column"}), 400
+        # Load and return result
+        if not os.path.exists("output/results.csv"):
+            return jsonify({"error": "Scraping failed — no results.csv generated"}), 500
 
-        BATCH_SIZE = 5
-        all_results = []
-
-        # Remove stale Chrome session if needed
-        if CHROME_INFO_FILE.exists():
-            CHROME_INFO_FILE.unlink()
-
-        batches = [df[i:i + BATCH_SIZE] for i in range(0, len(df), BATCH_SIZE)]
-        total_batches = len(batches)
-
-        for idx, batch_df in enumerate(batches):
-            batch_results = run_batch(
-                batch_df=batch_df,
-                batch_index=idx,
-                total_batches=total_batches,
-                global_progress=all_results,
-                global_bar=DummyTQDM(),   # no CLI progress in API mode
-                output_path=None,         # disable CSV writing in API mode
-                li_at=li_at               # pass user-provided li_at
-            )
-            all_results.extend(batch_results)
-
-        return jsonify(all_results), 200
+        results_df = pd.read_csv("output/results.csv")
+        return jsonify(results_df.to_dict(orient="records")), 200
 
     except Exception as e:
-        logging.error(f"🔥 API Fatal error: {e}", exc_info=True)
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+    finally:
+        # Clean up uploaded files
+        if os.path.exists(session_path):
+            os.remove(session_path)
+        if os.path.exists(csv_path):
+            os.remove(csv_path)
 
 @app.route("/api/growjo", methods=["POST"])
 def scrape():
