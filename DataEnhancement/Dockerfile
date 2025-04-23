@@ -1,6 +1,6 @@
 FROM debian:bullseye
 
-# 📦 Install base dependencies for Playwright + Chromium
+# 📦 Install dependencies for Nodriver + Chrome
 RUN apt-get update && apt-get install -y \
     python3 python3-pip curl gnupg unzip wget software-properties-common \
     fonts-liberation libasound2 libatk-bridge2.0-0 libatk1.0-0 libatspi2.0-0 \
@@ -9,7 +9,6 @@ RUN apt-get update && apt-get install -y \
     libxcb1 libxcomposite1 libxdamage1 libxext6 libxfixes3 libxkbcommon0 \
     libxrandr2 xdg-utils patch build-essential gcc --no-install-recommends && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
-
 
 # 🐍 Python setup
 COPY requirements.txt .
@@ -26,8 +25,8 @@ ENV PYTHONPATH=/app
 
 WORKDIR /app
 
-# 🎯 Expose Streamlit port
-EXPOSE 8501
+# 🚪 Expose Flask port
+EXPOSE 5000
 
-# 🚀 Launch Streamlit
-CMD ["streamlit", "run", "/frontend/main.py", "--server.port=8501", "--server.address=0.0.0.0"]
+# 🚀 Launch backend Flask API
+CMD ["python3", "-m", "backend.api"]
