@@ -12,7 +12,8 @@ RUN apt-get update && apt-get install -y \
 
 # 🐍 Python setup
 COPY requirements.txt .
-RUN pip3 install --upgrade pip && pip3 install -r requirements.txt
+RUN pip3 install --upgrade pip && \
+    pip3 install -r requirements.txt --no-cache-dir --timeout=100 --retries=10 -i https://pypi.org/simple
 RUN pip3 install playwright && playwright install chromium
 
 # 📁 Copy app code
