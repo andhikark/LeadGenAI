@@ -93,7 +93,8 @@ def extract_company_details(driver, company_url, business_name):
     except Exception as e:
         logging.warning(f"❗ Error parsing with BeautifulSoup: {e}")
 
-    logging.info(f"[Parsed] HQ: {headquarters} | Website: {company_website} | Size: {company_size} | Industry: {industry}")
+    logging.info(f"[Parsed] HQ: {headquarters} | Website: {company_website} | Size: {employees} | Industry: {industry}")
+
 
     return {
         "Company Website": company_website,

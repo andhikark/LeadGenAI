@@ -9,10 +9,15 @@ from .utils import extract_domain, get_name_parts
 from .navigation import search_company_links, select_company_link
 from .companyDetails import extract_company_details
 from .location import validate_location
-from ..utils.chromeUtils import DEBUG_FOLDER
+# from ..utils.chromeUtils import DEBUG_FOLDER
 from .login import login_to_linkedin, random_scrolling
 from ..utils.locationUtils import city_names_match
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S"
+)
 
 def slugify_company_name(name):
     return re.sub(r'[^a-z0-9-]', '', name.lower().replace(" ", "-"))
@@ -72,139 +77,158 @@ def load_page_naturally(driver, url):
     time.sleep(random.uniform(1.0, 2.5))
 
 
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys
+
 def scrape_linkedin(driver, business_name, expected_city=None, expected_state=None, expected_website=None):
-    """
-    Scrape the LinkedIn 'About' page or fallback to search if needed.
-    Returns a dict with company details or an 'Error' key on failure.
-    """
     try:
-        logging.info(f"🔍 Scraping LinkedIn for {business_name}")
-
-        # Prepare expected domain
+        logging.info(f"🔍 Starting scrape for: {business_name}")
         expected_domain = extract_domain(expected_website) if expected_website else None
-        if expected_domain:
-            logging.debug(f"Expected domain: {expected_domain}")
 
-        # Direct /about URL
-        slug = slugify_company_name(business_name)
-        about_url = f"https://www.linkedin.com/company/{slug}/about/"
-        
-        # Load page with natural behavior
-        load_page_naturally(driver, about_url)
-        
-        # Add a random human interaction
-        human_interaction(driver)
+        # Step 1: Go to feed
+        driver.get("https://www.linkedin.com/feed")
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "input[placeholder='Search']"))
+        )
+        time.sleep(random.uniform(2.0, 3.0))
 
-        # Login if needed
-        if "login" in driver.current_url or "uas/login" in driver.current_url:
-            logging.info("🔐 Detected login page. Attempting login.")
-            if not login_to_linkedin(driver, os.getenv("LINKEDIN_USERNAME"), os.getenv("LINKEDIN_PASSWORD")):
-                logging.warning("Login failed, using fallback.")
-                return _fallback_scrape(driver, business_name, expected_city, expected_state, expected_domain)
-            
-            # After login, reload the page
-            load_page_naturally(driver, about_url)
-            human_interaction(driver)
+        # Step 2: Type business name into search bar
+        search_box = driver.find_element(By.CSS_SELECTOR, "input[placeholder='Search']")
+        search_box.click()
+        time.sleep(random.uniform(0.3, 0.8))
+        for char in business_name:
+            search_box.send_keys(char)
+            time.sleep(random.uniform(0.1, 0.25))
+        search_box.send_keys(Keys.RETURN)
 
-        # Unavailable page
-        if "linkedin.com/company/unavailable" in driver.current_url:
-            logging.warning("Company unavailable, using fallback.")
+        # Step 3: Click "Companies" tab
+        WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Companies')]"))
+        ).click()
+        time.sleep(random.uniform(2.5, 3.5))
+
+        # Step 4: Click the first result
+        try:
+            top_result = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, "//a[contains(@href, '/company/')]"))
+            )
+            time.sleep(random.uniform(0.5, 1.0))
+            top_result.click()
+            time.sleep(random.uniform(2.5, 4.0))
+        except Exception as e:
+            logging.warning(f"❌ Failed to click company search result: {e}")
             return _fallback_scrape(driver, business_name, expected_city, expected_state, expected_domain)
 
-        # Extract details
-        details = extract_company_details(driver, about_url, business_name)
-        
-        # Add more human-like behavior
+        # Step 5: Go to /about page if not already there
+        if "/about" not in driver.current_url:
+            try:
+                about_link = WebDriverWait(driver, 5).until(
+                    EC.element_to_be_clickable((By.XPATH, "//a[contains(@href, '/about')]"))
+                )
+                driver.get(about_link.get_attribute("href"))
+                time.sleep(random.uniform(2.0, 3.0))
+            except:
+                logging.warning("❌ Could not find /about page")
+                return _fallback_scrape(driver, business_name, expected_city, expected_state, expected_domain)
+
+        # Check for unavailable page
+        if "linkedin.com/company/unavailable" in driver.current_url:
+            logging.warning("🚫 Unavailable page. Returning to /feed and retrying fallback.")
+            driver.get("https://www.linkedin.com/feed")
+            time.sleep(random.uniform(2.0, 3.5))
+            fallback_name = " ".join(business_name.split()[:-1])
+            return _fallback_scrape(driver, fallback_name, expected_city, expected_state, expected_domain)
+
+        # Step 6: Extract data
+        details = extract_company_details(driver, driver.current_url, business_name)
         human_interaction(driver)
 
-        # Check if all core fields are empty
         core_vals = [details.get(k) for k in (
             "Company Website", "Company Size", "Headquarters", "Industry", "Founded"
         )]
         if all(val in (None, "", "Not found") for val in core_vals):
-            logging.info("Incomplete /about data, using fallback.")
+            logging.info("⚠️ Incomplete /about data. Triggering fallback.")
             return _fallback_scrape(driver, business_name, expected_city, expected_state, expected_domain)
 
-        # Success
         domain_match = extract_domain(details.get("Company Website") or "")
         return {
-            "LinkedIn Link": about_url,
+            "LinkedIn Link": driver.current_url,
             **details,
-            "Location Match": "Direct link",
-            "Domain Match": ("Domain matched" if expected_domain and domain_match == expected_domain else "Domain mismatch")
+            "Location Match": "Direct search",
+            "Domain Match": "Domain matched" if expected_domain and domain_match == expected_domain else "Domain mismatch"
         }
 
     except Exception as e:
-        logging.error(f"Unexpected scrape error for {business_name}: {e}", exc_info=True)
+        logging.error(f"🔥 Unexpected scrape error for {business_name}: {e}", exc_info=True)
         return {"Business Name": business_name, "Error": str(e)}
 
 
+
+
 def _fallback_scrape(driver, business_name, expected_city, expected_state, expected_domain):
-    """
-    Fallback scraping via LinkedIn search results.
-    Handles its own exceptions and returns a dict or error.
-    """
     try:
         name_tokens = business_name.split()
         for i in range(len(name_tokens) - 1, 0, -1):
             query = " ".join(name_tokens[:i])
-            search_url = f"https://www.linkedin.com/search/results/companies/?keywords={query.replace(' ', '%20')}"
 
-            logging.info(f"Fallback query: {query}")
-            
-            # Load search page naturally
-            load_page_naturally(driver, search_url)
-            
-            # Add random human interaction
+            driver.get("https://www.linkedin.com/feed")
+            time.sleep(random.uniform(2.0, 3.0))
             human_interaction(driver)
 
-            if has_no_results(driver):
-                logging.debug(f"No results for '{query}'")
+            try:
+                search_box = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "input[placeholder='Search']"))
+                )
+                search_box.click()
+                time.sleep(random.uniform(0.7, 1.3))
+                search_box.clear()
+                for char in query:
+                    search_box.send_keys(char)
+                    time.sleep(random.uniform(0.1, 0.2))
+                search_box.send_keys(Keys.RETURN)
+                time.sleep(random.uniform(2.5, 4.0))
+                human_interaction(driver)
+            except Exception as e:
+                logging.warning(f"Fallback search failed: {e}")
                 continue
+
+            try:
+                companies_tab = WebDriverWait(driver, 8).until(
+                    EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Companies')]"))
+                )
+                companies_tab.click()
+                time.sleep(random.uniform(2.0, 3.0))
+            except:
+                logging.warning("Companies tab not found, continuing without it")
 
             links = search_company_links(driver, query)
             if not links:
+                logging.debug(f"No links found for fallback query: {query}")
                 continue
-                
-            # Add random human-like pause as if looking at results
-            time.sleep(random.uniform(1.5, 3.5))
 
-            # Pick the best match by city if possible
-            selected = None
             for link in links:
                 try:
-                    container = link
-                    for _ in range(4):
-                        container = container.find_element(By.XPATH, "./..")
-                    snippet = container.text.lower()
-                    if expected_city and city_names_match(expected_city.lower(), snippet):
-                        selected = link
-                        break
-                except Exception:
+                    url = link.get_attribute("href")
+                    if not url:
+                        continue
+
+                    logging.info(f"🧭 Fallback visiting: {url}")
+                    load_page_naturally(driver, url.rstrip("/") + "/about")
+                    random_scrolling(driver)
+
+                    details = extract_company_details(driver, driver.current_url, business_name)
+                    domain_match = extract_domain(details.get("Company Website") or "")
+
+                    return {
+                        "LinkedIn Link": driver.current_url,
+                        **details,
+                        "Location Match": f"Fallback ({query})",
+                        "Domain Match": ("Domain matched" if expected_domain and domain_match == expected_domain else "Domain mismatch")
+                    }
+                except Exception as e:
+                    logging.warning(f"Fallback scrape failed for one result: {e}")
                     continue
-
-            # Default to first if no city match
-            selected = selected or links[0]
-            url = selected.get_attribute("href")
-            if not url:
-                continue
-
-            # Visit the /about page with natural behavior
-            load_page_naturally(driver, url.rstrip("/") + "/about")
-            
-            # Add random scrolling
-            random_scrolling(driver)
-
-            details = extract_company_details(driver, driver.current_url, business_name)
-            website = details.get("Company Website") or ""
-            domain_match = extract_domain(website)
-
-            return {
-                "LinkedIn Link": driver.current_url,
-                **details,
-                "Location Match": f"Fallback ({query})",
-                "Domain Match": ("Domain matched" if expected_domain and domain_match == expected_domain else "Domain mismatch")
-            }
 
         logging.error(f"Fallback exhausted for {business_name}")
         return _empty_result(f"No results after fallback for {business_name}")
@@ -212,6 +236,7 @@ def _fallback_scrape(driver, business_name, expected_city, expected_state, expec
     except Exception as e:
         logging.error(f"Fallback error for {business_name}: {e}", exc_info=True)
         return {"Business Name": business_name, "Error": str(e)}
+
 
 
 def has_no_results(driver):
