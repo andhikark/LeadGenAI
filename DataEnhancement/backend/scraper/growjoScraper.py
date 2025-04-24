@@ -61,11 +61,6 @@ class GrowjoScraper:
             
             # Wait for page to load completely
             time.sleep(5)
-            
-            # Save page source for debugging
-            with open("login_page.html", "w", encoding="utf-8") as f:
-                f.write(self.driver.page_source)
-                # DEBUG: Saving HTML of login page to diagnose possible login form structure issues
                 
             print("Page title:", self.driver.title)
             print("Current URL:", self.driver.current_url)
@@ -118,9 +113,6 @@ class GrowjoScraper:
             
         except Exception as e:
             print(f"Login failed with exception: {str(e)}")
-            # Save screenshot for debugging
-            self.driver.save_screenshot("login_error.png")
-            print("Screenshot saved as login_error.png")
             # DEBUG: Capturing screenshot of failed login attempt to visually inspect the page state
             
             # Try direct navigation as a last resort
@@ -163,9 +155,6 @@ class GrowjoScraper:
                             (By.CSS_SELECTOR, "input.search-input, input.form-control, input.search")))
                     except TimeoutException:
                         # Save page source for debugging
-                        with open("search_page.html", "w", encoding="utf-8") as f:
-                            f.write(self.driver.page_source)
-                        self.driver.save_screenshot("search_page.png")
                         # DEBUG: Saving HTML and screenshot of search page to identify search input elements
                         
                         # Try to find all inputs for debugging
@@ -186,9 +175,6 @@ class GrowjoScraper:
             time.sleep(5)
             
             # Save search results page for debugging
-            self.driver.save_screenshot("search_results.png")
-            with open("search_results.html", "w", encoding="utf-8") as f:
-                f.write(self.driver.page_source)
             # DEBUG: Saving HTML and screenshot of search results to analyze result structure and verify company matches
             
             # Try different methods to find the company link
@@ -220,16 +206,11 @@ class GrowjoScraper:
             company_link.click()
             time.sleep(5)
             
-            # Save company page for debugging
-            self.driver.save_screenshot("company_page.png")
-            with open("company_page.html", "w", encoding="utf-8") as f:
-                f.write(self.driver.page_source)
                 
             return True
                 
         except Exception as e:
             print(f"Error searching for company: {str(e)}")
-            self.driver.save_screenshot("search_error.png")
             return False
     
     def is_phone_number(self, text):
@@ -381,10 +362,6 @@ class GrowjoScraper:
                                 time.sleep(2)
                                 
                                 # Save employee page HTML for analysis
-                                employee_name_safe = name.replace(" ", "_").replace("/", "_")
-                                with open(f"employee_{employee_name_safe}.html", "w", encoding="utf-8") as f:
-                                    f.write(self.driver.page_source)
-                                self.driver.save_screenshot(f"employee_{employee_name_safe}_before.png")
                                 print(f"Saved employee page HTML and screenshot for {name}")
                                 # DEBUG: Saving HTML and screenshot of employee page before revealing contact info to examine initial state
                                 
@@ -426,7 +403,6 @@ class GrowjoScraper:
                                                 print(f"Failed to click reveal button: {str(e)}")
                                         
                                         # Save screenshot after clicking reveal
-                                        self.driver.save_screenshot(f"employee_{employee_name_safe}_after.png")
                                         # DEBUG: Capturing screenshot after reveal button click to verify contact info exposure
                                     
                                     # Look for revealed contact info
@@ -653,7 +629,6 @@ class GrowjoScraper:
             
         except Exception as e:
             print(f"Error getting decision makers: {str(e)}")
-            self.driver.save_screenshot("decision_makers_error.png")
             return []
     
     def scrape_company(self, company_name):
