@@ -7,7 +7,7 @@ import jwt
 
 JWT_SECRET = "fallback_secret_change_me_in_production"
 JWT_ALGORITHM = "HS256"
-BACKEND_URL = "http://localhost:5000"
+BACKEND_URL = "http://145.223.21.90:5000"
 
 cookies = CookieController()
 token = cookies.get("auth_token")
