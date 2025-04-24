@@ -1,49 +1,43 @@
+# backend/linkedinScraper/scraping/companyDetails.py
+
 import logging
 import time
-import re
+import random
+import os
 from bs4 import BeautifulSoup
 from selenium.webdriver.common.by import By
 from .utils import extract_domain
+import re
 from .jsonParser import extract_industry_from_json_data
-from .human import human_delay, human_scroll
 
-def extract_company_details(driver, company_url, business_name, fast=False):
-    """
-    Scrape company details from the LinkedIn About page.
-    If fast=True, minimize waits and scrolling.
-    """
+os.makedirs("output", exist_ok=True)
+
+def extract_company_details(driver, company_url, business_name):
     logging.info(f"Navigating to company URL: {company_url}")
     driver.get(company_url)
+    time.sleep(2 + random.random())
 
-    # If not in fast mode, give the page a chance to load and redirect to /about/
-    if not fast:
-        human_delay(2, 1)
-
-    # Ensure we're on the About subpage
     if '/about/' not in driver.current_url:
         about_url = company_url.rstrip('/') + '/about/'
         logging.info(f"Redirecting to about page: {about_url}")
         driver.get(about_url)
-        if not fast:
-            human_delay(2, 1)
+        time.sleep(2 + random.random())
 
-    # Trigger dynamic content with scroll
-    human_scroll(driver, steps=2 if fast else 4, max_offset=500 if fast else 900)
-    human_delay(0.3, 0.5)
+    # Scroll to ensure dynamic content loads
+    for _ in range(3):
+        driver.execute_script("window.scrollBy(0, 600)")
+        time.sleep(0.5 + 0.5 * random.random())
 
     # Dump HTML + screenshot for debugging
     timestamp = int(time.time())
     html = driver.page_source
-    # try:
-    #     driver.save_screenshot(f"output/about_debug_{timestamp}.png")
-    #     with open(f"output/about_source_{timestamp}.html", "w", encoding="utf-8") as f:
-    #         f.write(html)
-    # except Exception as e:
-    #     logging.warning(f"Failed to save debug output: {e}")
+    driver.save_screenshot(f"output/about_debug_{timestamp}.png")
+    with open(f"output/about_source_{timestamp}.html", "w", encoding="utf-8") as f:
+        f.write(html)
 
     soup = BeautifulSoup(html, 'html.parser')
 
-    # Initialize fields
+    # --- Field Defaults ---
     company_website = "Not found"
     employees = "Not found"
     associated_members = "Not found"
@@ -65,7 +59,6 @@ def extract_company_details(driver, company_url, business_name, fast=False):
             dds = dt.find_next_siblings("dd", limit=2)
             if not dds:
                 continue
-
             value = dds[0].get_text(strip=True)
 
             if "website" in label and value.startswith("http"):
@@ -75,8 +68,8 @@ def extract_company_details(driver, company_url, business_name, fast=False):
                 if len(dds) > 1:
                     span = dds[1].find("span")
                     if span:
-                        associated_text = span.get_text(strip=True)
-                        match = re.search(r"\d+", associated_text)
+                        text = span.get_text(strip=True).replace(",", "")  # 👈 Remove commas
+                        match = re.search(r"\d+", text)
                         if match:
                             associated_members = match.group()
             elif "founded" in label:
@@ -86,7 +79,7 @@ def extract_company_details(driver, company_url, business_name, fast=False):
             elif "industry" in label:
                 industry = value
 
-        # Headquarters parsing
+        # Headquarters from location card
         hq_block = soup.select_one("div.org-location-card p")
         if hq_block:
             full_hq = hq_block.get_text(strip=True)
@@ -100,9 +93,7 @@ def extract_company_details(driver, company_url, business_name, fast=False):
     except Exception as e:
         logging.warning(f"❗ Error parsing with BeautifulSoup: {e}")
 
-    logging.info(
-        f"[Parsed] HQ: {headquarters} | Employees: {employees} | Members: {associated_members} | Website: {company_website} | Industry: {industry}"
-    )
+    logging.info(f"[Parsed] HQ: {headquarters} | Website: {company_website} | Size: {company_size} | Industry: {industry}")
 
     return {
         "Company Website": company_website,

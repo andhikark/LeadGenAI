@@ -1,181 +1,200 @@
-import os
-import logging
-import random
-import re
-import time
-from urllib.parse import urlparse
+# import os
+# import shutil
+# import logging
+# import pandas as pd
+# import random
+# import time
+# from dotenv import load_dotenv
+# from tqdm import tqdm
+# from linkedinScraper.utils.chromeUtils import get_chrome_driver
+# from linkedinScraper.scraping.login import login_to_linkedin, random_scrolling
+# from linkedinScraper.scraping.scraper import scrape_linkedin
+# from linkedinScraper.utils.fileUtils import read_csv
 
-import pandas as pd
-from dotenv import load_dotenv
-from tqdm import tqdm
+# # === Setup Logging ===
+# def get_next_log_filename(log_dir="log", base_name="log"):
+#     os.makedirs(log_dir, exist_ok=True)
+#     i = 1
+#     while os.path.exists(f"{log_dir}/{base_name}_{i}.log"):
+#         i += 1
+#     return f"{log_dir}/{base_name}_{i}.log"
 
-from .utils.chromeUtils import get_chrome_driver, CHROME_INFO_FILE
-from .scraping.scraper import scrape_linkedin
-from .utils.fileUtils import read_csv
+# log_file = get_next_log_filename()
+# logging.basicConfig(
+#     filename=log_file,
+#     level=logging.INFO,
+#     format="%(asctime)s - %(levelname)s - %(message)s"
+# )
 
-# -----------------------------------------------------------------------------
-# Logging / I/O helpers
-# -----------------------------------------------------------------------------
+# # === Environment and Configs ===
+# load_dotenv()
+# CSV_INPUT = "input/sample_data1.csv"
+# CSV_OUTPUT_BASE = "output/linkedin_scraped_results"
+# USERNAME = os.getenv("LINKEDIN_USERNAME") 
+# PASSWORD = os.getenv("LINKEDIN_PASSWORD") 
 
-def _init_logging() -> None:
-    os.makedirs("log", exist_ok=True)
-    i = 1
-    while os.path.exists(f"log/log_{i}.log"):
-        i += 1
-    logging.basicConfig(
-        filename=f"log/log_{i}.log",
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-    )
+# # Reduced batch size to minimize detection risk
+# BATCH_SIZE = 2
 
-def _next_output_path(base: str) -> str:
-    i = 1
-    while os.path.exists(f"{base}{i}.csv"):
-        i += 1
-    return f"{base}{i}.csv"
+# # Increased wait time between requests to appear more human-like
+# # Min/max seconds to wait between companies in a batch
+# WAIT_BETWEEN_REQUESTS = (30, 120)  
 
+# # Min/max seconds to wait between batches
+# WAIT_BETWEEN_BATCHES = (300, 600)  # 5-10 minutes between batches
 
-# -----------------------------------------------------------------------------
-# Batch runner
-# -----------------------------------------------------------------------------
+# def get_next_output_filename(base):
+#     i = 3
+#     while os.path.exists(f"{base}{i}.csv"):
+#         i += 1
+#     return f"{base}{i}.csv"
 
+# CSV_OUTPUT = get_next_output_filename(CSV_OUTPUT_BASE)
 
-def run_batch(
-    batch_df: pd.DataFrame,
-    batch_index: int,
-    total_batches: int,
-    global_progress: list[dict],
-    global_bar,
-    output_path: str | None,
-    li_at: str
-) -> list[dict]:
-    results: list[dict] = []
-    driver = None
+# def humanize_wait(min_time, max_time, description="Waiting"):
+#     """Human-like waiting with progress feedback"""
+#     wait_time = random.uniform(min_time, max_time)
+#     logging.info(f"⏱️ {description} for {wait_time:.1f}s")
+    
+#     # For longer waits, show a progress bar
+#     if wait_time > 10:
+#         for _ in tqdm(range(int(wait_time)), desc=description, leave=False):
+#             # Add randomness to each second
+#             time.sleep(1 + random.uniform(-0.1, 0.1))
+#     else:
+#         time.sleep(wait_time)
 
-    try:
-        driver = get_chrome_driver(li_at=li_at, headless=True)
-        driver.get("https://www.linkedin.com/feed")
-        if "login" in driver.current_url.lower():
-            logging.error(":x: Cookie login failed; aborting batch.")
-            return results
-        logging.info(":white_check_mark: Authenticated; scraping %d companies", len(batch_df))
+# def run_batch(batch_rows):
+#     user_data_dir = None
+#     results = []
 
-        with tqdm(total=len(batch_df), desc=f"Batch {batch_index+1}/{total_batches}", position=1, leave=False) as batch_bar:
-            for _, row in batch_df.iterrows():
-                company = row.get("Company", "UNKNOWN")
-                logging.info(f":mag: Scraping company: {company}")
-                slug = re.sub(r"[^a-z0-9-]", "", company.lower().replace(" ", "-"))
-                about_url = f"https://www.linkedin.com/company/{slug}/about/"
+#     try:
+#         driver = get_chrome_driver(headless=False)
+#         user_data_dir = driver.capabilities.get("goog:chromeOptions", {}).get("args", [None])[0]
+        
+#         # Login at the beginning of each batch
+#         success = login_to_linkedin(driver, USERNAME, PASSWORD)
+#         if not success:
+#             logging.error("❌ Failed to login at batch start")
+#             raise Exception("Login failed")
+            
+#         # Browse the feed for a bit to look more human
+#         driver.get("https://www.linkedin.com/feed/")
+#         random_scrolling(driver)
+#         humanize_wait(5, 15, "Browsing feed")
+            
+#         for i, (_, row) in enumerate(tqdm(enumerate(batch_rows.iterrows()), total=len(batch_rows), desc="🔄 Scraping batch", leave=False)):
+#             company = row[1].get("Company", "UNKNOWN")
+            
+#             try:
+#                 # Visit a random LinkedIn page occasionally to look more natural
+#                 if random.random() < 0.3:  # 30% chance
+#                     random_pages = [
+#                         "https://www.linkedin.com/feed/",
+#                         "https://www.linkedin.com/mynetwork/",
+#                         "https://www.linkedin.com/jobs/"
+#                     ]
+#                     driver.get(random.choice(random_pages))
+#                     random_scrolling(driver)
+#                     humanize_wait(3, 10, "Browsing LinkedIn")
+                
+#                 # Scrape the target company
+#                 result = scrape_linkedin(
+#                     driver,
+#                     company,
+#                     expected_city=row[1].get("City"),
+#                     expected_state=row[1].get("State"),
+#                     expected_website=row[1].get("Website")
+#                 )
+#                 result["Business Name"] = company
+#                 results.append(result)
+#                 logging.info(f"✅ Scraped: {company}")
+                
+#                 # Wait between requests if not the last item
+#                 if i < len(batch_rows) - 1:
+#                     humanize_wait(*WAIT_BETWEEN_REQUESTS, f"Cooling down after {company}")
+                    
+#             except Exception as e:
+#                 logging.error(f"❌ Error in {company}: {e}")
+#                 results.append({"Business Name": company, "Error": str(e)})
 
-                driver.get(about_url)
-                time.sleep(random.uniform(1.5, 2.5))
+#     finally:
+#         try:
+#             driver.quit()
+#         except:
+#             pass
+#         if user_data_dir and "temp_profiles" in user_data_dir and os.path.exists(user_data_dir):
+#             shutil.rmtree(user_data_dir, ignore_errors=True)
+#             logging.debug(f"🧹 Cleaned profile: {user_data_dir}")
 
-                path = urlparse(driver.current_url).path.lower()
-                if path.startswith(("/login", "/signup")):
-                    logging.error(":no_entry_sign: Redirected to %s during %s, cookie expired; aborting batch", path, company)
-                    results.append({"Business Name": company, "Error": f"Redirected to {path}"})
-                    break
+#     return results
 
-                try:
-                    result = scrape_linkedin(
-                        driver,
-                        company,
-                        expected_city=row.get("City"),
-                        expected_state=row.get("State"),
-                        expected_website=row.get("Website")
-                    )
-                    result["Business Name"] = company
-                    results.append(result)
-                    logging.info(":white_check_mark: Scraped: %s", company)
-                except Exception as exc:
-                    logging.error(":x: Error scraping %s: %s", company, exc, exc_info=True)
-                    error_result = {"Business Name": company, "Error": str(exc)}
-                    results.append(error_result)
+# def process_company(row):
+#     results = []
+#     user_data_dir = None
+#     try:
+#         driver = get_chrome_driver(headless=False)
+#         user_data_dir = driver.capabilities.get("goog:chromeOptions", {}).get("args", [None])[0]
+#         login_to_linkedin(driver, USERNAME, PASSWORD)
 
-                main_h = driver.current_window_handle
-                for h in driver.window_handles:
-                    if h != main_h:
-                        driver.switch_to.window(h)
-                        driver.close()
-                driver.switch_to.window(main_h)
+#         company = row.get("Company", "UNKNOWN")
+#         result = scrape_linkedin(
+#             driver,
+#             company,
+#             expected_city=row.get("City"),
+#             expected_state=row.get("State"),
+#             expected_website=row.get("Website")
+#         )
+#         result["Business Name"] = company
+#         logging.info(f"✅ API scraped: {company}")
+#         return result
 
-                delay = random.uniform(5, 10)
-                logging.debug(":clock3: Sleeping %.2f seconds before next company...", delay)
-                time.sleep(delay)
+#     except Exception as e:
+#         logging.error(f"❌ API scrape failed for {row.get('Company')}: {e}")
+#         return {"Business Name": row.get("Company", "UNKNOWN"), "Error": str(e)}
 
-                if "Error" in results[-1] and "429" in results[-1]["Error"]:
-                    sleep_min = random.uniform(3, 4)
-                    logging.warning(":warning: 429 detected; sleeping %.1f min", sleep_min)
-                    time.sleep(sleep_min * 60)
+#     finally:
+#         try:
+#             driver.quit()
+#         except:
+#             pass
+#         if user_data_dir and "temp_profiles" in user_data_dir and os.path.exists(user_data_dir):
+#             shutil.rmtree(user_data_dir, ignore_errors=True)
+#             logging.debug(f"🧹 API cleaned profile: {user_data_dir}")
 
-                global_bar.update(1)
-                batch_bar.update(1)
+# def main():
+#     if not os.path.exists(CSV_INPUT):
+#         logging.error(f"CSV file not found: {CSV_INPUT}")
+#         return
 
-                # Save CSV every 5 rows scraped
-                if output_path and len(results) % 5 == 0:
-                    pd.DataFrame(results).to_csv(output_path, index=False)
-                    logging.info(":floppy_disk: Auto-saved %d rows → %s", len(results), output_path)
+#     df = read_csv(CSV_INPUT)
+#     if df.empty or "Company" not in df.columns:
+#         logging.error("CSV is empty or missing 'Company' column.")
+#         return
 
-    finally:
-        if driver:
-            try:
-                driver.quit()
-            except Exception:
-                logging.debug(":octagonal_sign: Driver quit raised during cleanup.")
+#     all_results = []
+    
+#     # Shuffle the data slightly to avoid predictable patterns
+#     if len(df) > BATCH_SIZE * 2:
+#         df = df.sample(frac=1, random_state=random.randint(1, 100))
+        
+#     batches = [df[i:i+BATCH_SIZE] for i in range(0, len(df), BATCH_SIZE)]
 
-    return results
+#     for idx, batch_rows in enumerate(tqdm(batches, desc="📦 All Batches")):
+#         logging.info(f"🚀 Starting batch {idx + 1}/{len(batches)}")
+#         batch_results = run_batch(batch_rows)
+#         all_results.extend(batch_results)
 
+#         # Save results more frequently
+#         if (len(all_results) % 5 == 0) or (idx == len(batches) - 1):
+#             pd.DataFrame(all_results).to_csv(CSV_OUTPUT, index=False)
+#             logging.info(f"💾 Partial save: {len(all_results)} rows → {CSV_OUTPUT}")
 
-# -----------------------------------------------------------------------------
-# CLI entry point
-# -----------------------------------------------------------------------------
+#         # Wait longer between batches to avoid detection
+#         if idx < len(batches) - 1:
+#             humanize_wait(*WAIT_BETWEEN_BATCHES, "Waiting between batches")
 
-def main() -> None:
-    _init_logging()
-    load_dotenv()
+#     logging.info(f"✅ Finished scraping. Final results saved to {CSV_OUTPUT}")
 
-    global CSV_OUTPUT
-    CSV_INPUT = "input/sample_data1.csv"
-    CSV_OUTPUT_BASE = "output/linkedin_scraped_results"
-    BATCH_SIZE = 5
-    WAIT_BETWEEN_BATCHES = (10, 20)
-
-    # Ensure output directory exists
-    os.makedirs("output", exist_ok=True)
-
-    if CHROME_INFO_FILE.exists():
-        CHROME_INFO_FILE.unlink()
-
-    if not os.path.exists(CSV_INPUT):
-        logging.error("CSV file not found: %s", CSV_INPUT)
-        return
-
-    df = read_csv(CSV_INPUT)
-    if df.empty or "Company" not in df.columns:
-        logging.error("CSV missing required 'Company' column or is empty")
-        return
-
-    CSV_OUTPUT = _next_output_path(CSV_OUTPUT_BASE)
-    all_results: list[dict] = []
-
-    batches = [df[i: i + BATCH_SIZE] for i in range(0, len(df), BATCH_SIZE)]
-    total_batches = len(batches)
-    total_rows = len(df)
-
-    with tqdm(total=total_rows, desc="📦 Rows Scraped", position=0) as global_bar:
-        for idx, batch_df in enumerate(batches):
-            logging.info("🚀 Starting batch %d/%d", idx + 1, total_batches)
-            batch_results = run_batch(batch_df, idx, total_batches, all_results, global_bar, CSV_OUTPUT)
-            all_results.extend(batch_results)
-
-            if idx < total_batches - 1:
-                sleep_s = random.uniform(*WAIT_BETWEEN_BATCHES)
-                logging.info("⏱️ Waiting %.1f s before next batch", sleep_s)
-                time.sleep(sleep_s)
-
-    pd.DataFrame(all_results).to_csv(CSV_OUTPUT, index=False)
-    logging.info("✅ Finished scraping; final results → %s", CSV_OUTPUT)
-
-
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

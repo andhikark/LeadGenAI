@@ -1,8 +1,8 @@
 import logging
-from backend.scraper.linkedinScraper.utils.urlUtils import extract_domain
-from backend.scraper.linkedinScraper.scraping.navigation import search_company_links, select_company_link
-from backend.scraper.linkedinScraper.scraping.location import validate_location
-from backend.scraper.linkedinScraper.scraping.companyDetails import extract_company_details
+from linkedinScraper.utils.urlUtils import extract_domain
+from linkedinScraper.scraping.navigation import search_company_links, select_company_link
+from linkedinScraper.scraping.location import validate_location
+from linkedinScraper.scraping.companyDetails import extract_company_details
 
 logger = logging.getLogger(__name__)
 

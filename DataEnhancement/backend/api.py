@@ -11,7 +11,7 @@ from scraper.apollo_scraper import enrich_single_company
 from scraper.linkedinScraper.scraping.scraper import scrape_linkedin
 from scraper.linkedinScraper.scraping.login import login_to_linkedin
 from scraper.linkedinScraper.utils.chromeUtils import get_chrome_driver
-from scraper.linkedinScraper.main import run_batch
+# from scraper.linkedinScraper.main import run_batch
 from scraper.linkedinScraper.utils.chromeUtils import CHROME_INFO_FILE
 from scraper.growjoScraper import GrowjoScraper
 from security import generate_token, token_required, VALID_USERS
@@ -97,53 +97,40 @@ class DummyTQDM:
 @app.route("/api/linkedin-info-batch", methods=["POST"])
 def get_linkedin_info_batch():
     try:
-        payload = request.get_json()
+        from scraper.linkedinScraper.utils.chromeUtils import get_chrome_driver
+        from scraper.linkedinScraper.scraping.login import login_to_linkedin
+        from scraper.linkedinScraper.scraping.scraper import scrape_linkedin
 
-        if not isinstance(payload, dict) or "data" not in payload or "li_at" not in payload:
-            return jsonify({"error": "Expected JSON object with 'data' (list) and 'li_at' (string)"}), 400
-
-        data_list = payload["data"]
-        li_at = payload["li_at"]
+        data_list = request.get_json()
 
         if not isinstance(data_list, list):
-            return jsonify({"error": "Field 'data' must be a list"}), 400
-        if not isinstance(li_at, str) or not li_at.strip():
-            return jsonify({"error": "Field 'li_at' must be a non-empty string"}), 400
+            return jsonify({"error": "Expected a list of objects"}), 400
 
-        df = pd.DataFrame(data_list)
-        df.rename(columns=lambda col: col.capitalize(), inplace=True)
+        driver = get_chrome_driver(headless=False)
 
-        if df.empty or "Company" not in df.columns:
-            return jsonify({"error": "Missing or empty 'Company' column"}), 400
+        # 🧠 (Optional): Use env vars for username/password
+        login_to_linkedin(driver, "", "")  # Replace with session/cookies in production
 
-        BATCH_SIZE = 5
-        all_results = []
+        results = []
+        for entry in data_list:
+            company = entry.get("company")
+            city = entry.get("city")
+            state = entry.get("state")
+            website = entry.get("website")
 
-        # Remove stale Chrome session if needed
-        if CHROME_INFO_FILE.exists():
-            CHROME_INFO_FILE.unlink()
+            if not company:
+                results.append({"error": "Missing required field: company"})
+                continue
 
-        batches = [df[i:i + BATCH_SIZE] for i in range(0, len(df), BATCH_SIZE)]
-        total_batches = len(batches)
+            result = scrape_linkedin(driver, company, city, state, website)
+            result["company"] = company  # So frontend can map it
+            results.append(result)
 
-        for idx, batch_df in enumerate(batches):
-            batch_results = run_batch(
-                batch_df=batch_df,
-                batch_index=idx,
-                total_batches=total_batches,
-                global_progress=all_results,
-                global_bar=DummyTQDM(),   # no CLI progress in API mode
-                output_path=None,         # disable CSV writing in API mode
-                li_at=li_at               # pass user-provided li_at
-            )
-            all_results.extend(batch_results)
-
-        return jsonify(all_results), 200
+        driver.quit()
+        return jsonify(results), 200
 
     except Exception as e:
-        logging.error(f"🔥 API Fatal error: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
-
 
 @app.route("/api/growjo", methods=["POST"])
 def scrape():
@@ -164,6 +151,6 @@ def scrape():
         scraper.close()
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))  # Render will provide the port
+    port = int(os.environ.get("PORT", 5050))  # Render will provide the port
     app.run(host="0.0.0.0", port=port, debug=True)
 
