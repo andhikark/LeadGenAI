@@ -22,6 +22,10 @@ from security import generate_token, token_required, VALID_USERS
 app = Flask(__name__)
 load_dotenv()
 
+@app.route("/", methods=["GET"])
+def health_check():
+    return jsonify({"status": "ok", "message": "leadgen API is alive"}), 200
+
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.get_json()

@@ -31,7 +31,7 @@ COPY . .
 RUN pip install --no-cache-dir -r requirements.txt selenium
 
 # Expose Flask port
-EXPOSE 5000
+EXPOSE 5050
 
 # Start Flask
 CMD ["python", "api.py"]
