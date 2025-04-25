@@ -1,97 +1,160 @@
 import time
+import random
 import logging
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
 
-from .human import human_type, human_delay
+def human_like_typing(element, text):
+    """Types text into an element with human-like timing variations"""
+    for char in text:
+        # Random delay before typing each character (varies more than previous implementation)
+        time.sleep(random.uniform(0.05, 0.25))
+        element.send_keys(char)
+    
+    # Add a pause after complete typing
+    time.sleep(random.uniform(0.3, 0.7))
 
-def is_captcha_present(driver):
-    try:
-        return bool(driver.find_elements(By.XPATH, "//div[contains(@class, 'captcha')]"))
-    except:
-        return False
+def random_scrolling(driver):
+    """Performs random scrolling behavior to mimic human browsing"""
+    scroll_amount = random.randint(100, 300)
+    scroll_direction = random.choice([1, -1])  # 1 for down, -1 for up
+    scroll_steps = random.randint(2, 5)
+    
+    for _ in range(scroll_steps):
+        driver.execute_script(f"window.scrollBy(0, {scroll_amount * scroll_direction})")
+        time.sleep(random.uniform(0.2, 1.0))
 
-def wait_for_feed_or_captcha(driver, max_wait_minutes=5):
-    total_wait_time = 0
-    while total_wait_time < (max_wait_minutes * 60):
-        current_url   = driver.current_url
-        page_source   = driver.page_source.lower()
-
-        if "/feed" in current_url:
-            logging.info("✅ Detected login success via feed page.")
-            return True
-        elif "captcha" in current_url or is_captcha_present(driver):
-            logging.warning("🛑 CAPTCHA detected. Waiting for user to solve it...")
-        elif "checkpoint" in current_url or "verify your identity" in page_source:
-            logging.warning("🔒 Security verification or checkpoint page.")
-        else:
-            logging.info("⏳ Waiting for user login completion or redirect...")
-
-        time.sleep(5)
-        total_wait_time += 5
-
-    logging.error("❌ Timeout waiting for LinkedIn feed page.")
-    return False
+def random_mouse_movement(driver, element=None):
+    """Simulates random mouse movements"""
+    actions = ActionChains(driver)
+    
+    if element:
+        # Move to target element with randomness
+        actions.move_to_element_with_offset(
+            element, 
+            random.randint(-10, 10), 
+            random.randint(-10, 10)
+        )
+    else:
+        # Move randomly on the page
+        viewport_width = driver.execute_script("return window.innerWidth")
+        viewport_height = driver.execute_script("return window.innerHeight")
+        
+        x = random.randint(10, viewport_width - 10)
+        y = random.randint(10, viewport_height - 10)
+        
+        actions.move_by_offset(x, y)
+    
+    actions.perform()
+    time.sleep(random.uniform(0.1, 0.5))
 
 def login_to_linkedin(driver, username, password):
-    """
-    Assumes `driver` is already launched (with or without profile).
-    Returns True once you hit /feed (or manual CAPTCHA solved).
-    """
     logging.info("🔐 Starting login process...")
-    driver.get('https://www.linkedin.com/login')
-    human_delay(1.5, 2)
 
+    # Go to login page directly
+    driver.get('https://www.linkedin.com/login')
+    
+    # Wait a bit with randomized time
+    time.sleep(random.uniform(2.0, 4.0))
+    
+    # Perform some random mouse movements before login
+    random_mouse_movement(driver)
+    
     try:
+        # Find the input fields
         username_field = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, 'username'))
         )
         password_field = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, 'password'))
         )
-
+        
+        # First move to the username field
+        random_mouse_movement(driver, username_field)
+        
+        # Click on the field
+        username_field.click()
+        time.sleep(random.uniform(0.3, 0.8))
+        
+        # Clear the fields with natural behavior
         username_field.clear()
+        time.sleep(random.uniform(0.2, 0.5))
+        
+        # Type username with human-like timing
+        human_like_typing(username_field, username)
+        
+        # Perform some realistic tab navigation
+        if random.choice([True, False]):
+            username_field.send_keys(Keys.TAB)
+            time.sleep(random.uniform(0.3, 0.7))
+        else:
+            # Or click on password field
+            random_mouse_movement(driver, password_field)
+            password_field.click()
+        
+        time.sleep(random.uniform(0.3, 0.8))
+        
+        # Clear password field
         password_field.clear()
-
-        # Human-like typing
-        human_type(username_field, username)
-        human_type(password_field, password)
-
+        time.sleep(random.uniform(0.2, 0.5))
+        
+        # Type password with human-like timing
+        human_like_typing(password_field, password)
+        
+        # Find and click login button with human-like behavior
         login_button = WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.XPATH, '//button[@type="submit"]'))
         )
-
-        human_delay(1, 1.5)
+        
+        # Move to login button
+        random_mouse_movement(driver, login_button)
+        time.sleep(random.uniform(0.5, 1.2))
+        
+        # Click the button
         login_button.click()
-        human_delay(2.5, 2.5)
+        
+        # Wait for login to complete with randomized timing
+        time.sleep(random.uniform(3.0, 5.0))
 
     except TimeoutException:
         logging.warning("⚠️ Login form not found. Aborting login.")
         return False
 
-    return wait_for_feed_or_captcha(driver)
+    # --- Checkpoint/Captcha Detection ---
+    for _ in range(3):
+        page_source = driver.page_source.lower()
+        current_url = driver.current_url
 
-def launch_and_login(username, password, profile_dir=None, headless=False):
-    """
-    1) Launches Chrome with a persistent profile (or default if None).
-    2) Runs the LinkedIn login flow manually (so you can solve CAPTCHA).
-    3) Returns the logged-in `driver` or None on failure.
-    """
-    # 1) Start Chrome
-    driver = get_chrome_driver(
-        headless     = headless,
-        proxy_url    = None,
-        user_data_dir= profile_dir
-    )
+        if any(x in current_url for x in ["checkpoint", "login"]) or \
+           any(x in page_source for x in ["captcha", "verify your identity", "security verification"]):
+            screenshot_path = f"output/login_checkpoint_{int(time.time())}.png"
+            driver.save_screenshot(screenshot_path)
+            logging.warning(f"⚠️ CAPTCHA or checkpoint detected. Screenshot saved: {screenshot_path}")
+            print(f"\n⚠️ Manual login required. Please complete it in the browser.")
+            input("⏸️ Press [ENTER] when you're logged in and see your feed...")
 
-    # 2) Perform login
-    success = login_to_linkedin(driver, username, password)
-    if not success:
-        driver.quit()
-        return None
+            if any(x in driver.current_url for x in ["feed", "mynetwork", "/in/"]):
+                logging.info("✅ Manual login successful.")
+                return True
+            else:
+                logging.warning("❌ Still not logged in.")
+                time.sleep(2)
+        else:
+            # Perform random scrolling to mimic a human looking at the page
+            random_scrolling(driver)
+            break
 
-    # 3) At this point your profile_dir holds all cookies, localStorage, etc.
-    logging.info(f"🎉 Logged in; profile saved to {profile_dir}")
-    return driver
+    if any(x in driver.current_url for x in ["feed", "mynetwork", "/in/"]):
+        logging.info("✅ Logged in programmatically.")
+        
+        # Simulate human behavior by scrolling a bit on the feed
+        random_scrolling(driver)
+        
+        return True
+
+    logging.error("❌ Login failed.")
+    return False

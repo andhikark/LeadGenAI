@@ -1,5 +1,5 @@
 import logging
-from backend.linkedinScraper.utils.locationUtils import city_names_match, state_in_text
+from ..utils.locationUtils import city_names_match, state_in_text
 from selenium.webdriver.common.by import By
 
 def validate_location(driver, links, city, state):
