@@ -5,7 +5,7 @@ from streamlit_cookies_controller import CookieController
 
 st.set_page_config(page_title="🔐 Login", layout="centered")
 
-BACKEND_URL = "http://127.0.0.1:5050"
+BACKEND_URL = "http://145.223.21.90:5050"
 JWT_ALGORITHM = "HS256"
 
 cookies = CookieController()

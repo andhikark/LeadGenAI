@@ -7,7 +7,7 @@ import jwt
 
 JWT_SECRET = "fallback_secret_change_me_in_production"
 JWT_ALGORITHM = "HS256"
-BACKEND_URL = "http://127.0.0.1:5050"
+BACKEND_URL = "http://145.223.21.90:5050"
 
 cookies = CookieController()
 token = cookies.get("auth_token")
@@ -42,9 +42,34 @@ def normalize_name(name):
     return name.strip().lower().replace(" ", "").replace("-", "").replace(".", "") if name else ""
 
 def generate_linkedin_lookup(response_json):
+    expected_keys = [
+        "Associated Members", "Company Website", "Domain Match", "Employees", "Founded",
+        "HQ City", "HQ State", "Headquarters", "Industry", "LinkedIn Link",
+        "Location Match", "Specialties", "company"
+    ]
+
+    # If it's a single empty dict or not a list, fallback
+    if not isinstance(response_json, list) or len(response_json) == 0:
+        st.warning("LinkedIn API returned empty or malformed data. Returning fallback entry.")
+        fallback = {key: "" for key in expected_keys}
+        return { "": fallback }
+
+    formatted_list = []
+    for r in response_json:
+        if not isinstance(r, dict):
+            continue
+        # Fill missing keys with ""
+        formatted_entry = {key: r.get(key, "") for key in expected_keys}
+        formatted_list.append(formatted_entry)
+
+    # If all entries are filtered out or company field missing, fallback
+    if not any(r.get("company") for r in formatted_list):
+        fallback = {key: "" for key in expected_keys}
+        return { "": fallback }
+
     return {
-        normalize_name(r.get("company")): r
-        for r in response_json
+        normalize_name(r["company"]): r
+        for r in formatted_list
         if r.get("company")
     }
 
@@ -178,11 +203,11 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
             json=linkedin_payload,
             headers=auth_headers()
         )
-        print("This is linkedin response")
-        print(linkedin_response.json)
-        linkedin_lookup = generate_linkedin_lookup(linkedin_response.json())
-        print(linkedin_lookup)
+        linkedin_data = linkedin_response.json()
 
+        linkedin_lookup = generate_linkedin_lookup(linkedin_data)
+        print("linkedin")
+        print(linkedin_lookup)
         for i, (idx, row) in enumerate(rows_to_update.iterrows()):
             domain = row["Company"]
             apollo = apollo_lookup.get(domain, {})
