@@ -12,6 +12,7 @@ from scraper.linkedinScraper.scraping.scraper import scrape_linkedin
 from scraper.linkedinScraper.scraping.login import login_to_linkedin
 from scraper.linkedinScraper.utils.chromeUtils import get_chrome_driver
 from selenium.webdriver.common.by import By
+import shutil
 
 # from scraper.linkedinScraper.main import run_batch
 # from scraper.linkedinScraper.utils.chromeUtils import CHROME_INFO_FILE
@@ -100,40 +101,24 @@ class DummyTQDM:
     def update(self, _):
         pass
 
-from flask import request, jsonify
-from selenium.webdriver.common.by import By
-from scraper.linkedinScraper.utils.chromeUtils import  generate_smartproxy_url
-from scraper.linkedinScraper.scraping.scraper import scrape_linkedin
+import shutil
 
 @app.route("/api/linkedin-info-batch", methods=["POST"])
 def get_linkedin_info_batch():
     try:
-        payload = request.get_json()
-        if not isinstance(payload, dict) or "li_at" not in payload or "data" not in payload:
-            return jsonify({"error": "Expected JSON with 'li_at' and 'data'"}), 400
+        from scraper.linkedinScraper.utils.chromeUtils import get_chrome_driver
+        from scraper.linkedinScraper.scraping.login import login_to_linkedin
+        from scraper.linkedinScraper.scraping.scraper import scrape_linkedin
 
-        li_at = payload["li_at"]
-        data_list = payload["data"]
-
-        # 🔐 Inject token into runtime env
-        os.environ["LI_AT"] = li_at
-
-        # ✅ Log which proxy is in use
-        proxy_url = generate_smartproxy_url("linkedin_batch_1")
-        print(f"🌐 Using proxy: {proxy_url}")
+        data_list = request.get_json()
+        if not isinstance(data_list, list):
+            return jsonify({"error": "Expected a list of objects"}), 400
 
         driver = get_chrome_driver(headless=False)
 
-        # Optional sanity check
-        try:
-            driver.get("https://api.myip.com")
-            time.sleep(2)
-            ip_info = driver.find_element(By.TAG_NAME, "body").text
-            print(f"🔎 Current IP Session Info: {ip_info}")
-        except Exception as e:
-            print(f"⚠️ Could not fetch IP info: {e}")
+        # Login (optional if not using li_at)
+        login_to_linkedin(driver, os.getenv("LINKEDIN_USERNAME"), os.getenv("LINKEDIN_PASSWORD"))  
 
-        # 🔄 Scrape loop
         results = []
         for entry in data_list:
             company = entry.get("company")
@@ -142,7 +127,7 @@ def get_linkedin_info_batch():
             website = entry.get("website")
 
             if not company:
-                results.append({"error": "Missing 'company' field."})
+                results.append({"error": "Missing required field: company"})
                 continue
 
             result = scrape_linkedin(driver, company, city, state, website)
@@ -150,11 +135,17 @@ def get_linkedin_info_batch():
             results.append(result)
 
         driver.quit()
+
+        # 👇 DELETE THE PROFILE FOLDER
+        profile_path = os.path.abspath("linkedin_profile_1")
+        if os.path.exists(profile_path):
+            shutil.rmtree(profile_path, ignore_errors=True)
+            print(f"🧹 Deleted user profile directory: {profile_path}")
+
         return jsonify(results), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 
 @app.route("/api/growjo", methods=["POST"])
