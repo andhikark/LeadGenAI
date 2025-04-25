@@ -7,7 +7,7 @@ import jwt
 
 JWT_SECRET = "fallback_secret_change_me_in_production"
 JWT_ALGORITHM = "HS256"
-BACKEND_URL = "http://145.223.21.90:5000"
+BACKEND_URL = "http://127.0.0.1:5050"
 
 cookies = CookieController()
 token = cookies.get("auth_token")
@@ -43,9 +43,9 @@ def normalize_name(name):
 
 def generate_linkedin_lookup(response_json):
     return {
-        normalize_name(r.get("Business Name")): r
+        normalize_name(r.get("company")): r
         for r in response_json
-        if r.get("Business Name")
+        if r.get("company")
     }
 
 def split_name(full_name):
@@ -77,13 +77,6 @@ STANDARD_COLUMNS = [
     'Email customization #1', 'Subject Line #1', 'Email Customization #2', 'Subject Line #2',
     'LinkedIn Customization #1', 'LinkedIn Customization #2', 'Reasoning for r//y/g'
 ]
-
-st.markdown("### 🔐 LinkedIn Token")
-li_token = st.text_input("LinkedIn Token", placeholder="please input your li token here")
-
-if st.button("💾 Save LinkedIn Token"):
-    st.success("✅ LinkedIn token saved.")
-
 
 st.markdown("### 📎 Step 1: Upload Your CSV")
 uploaded_file = st.file_uploader("Choose a CSV file to upload", type=["csv"])
@@ -179,18 +172,14 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
             }
             for _, row in rows_to_update.iterrows()
         ]
-        linkedin_payload_wrapped = {
-            "li_at": li_token,
-            "data": linkedin_payload
-        }
 
         linkedin_response = requests.post(
             f"{BACKEND_URL}/api/linkedin-info-batch",
-            json=linkedin_payload_wrapped,
+            json=linkedin_payload,
             headers=auth_headers()
         )
         print("This is linkedin response")
-        print(linkedin_response)
+        print(linkedin_response.json)
         linkedin_lookup = generate_linkedin_lookup(linkedin_response.json())
         print(linkedin_lookup)
 
