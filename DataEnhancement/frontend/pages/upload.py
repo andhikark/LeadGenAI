@@ -188,24 +188,24 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
         apollo_response = requests.post(f"{BACKEND_URL}/api/apollo-info", json=[{"domain": d} for d in apollo_domains], headers=auth_headers())
         apollo_lookup = {r["domain"]: r for r in apollo_response.json() if "domain" in r}
 
-        linkedin_payload = [
-            {
-                "company": str(row.get("Company", "")),
-                "city": str(row.get("City", "")),
-                "state": str(row.get("State", "")),
-                "website": str(row.get("Website", ""))
-            }
-            for _, row in rows_to_update.iterrows()
-        ]
+        linkedin_lookup = {
+            normalize_name(row["Company"]): {
+                "Associated Members": "",
+                "Company Website": "",
+                "Domain Match": "",
+                "Employees": "",
+                "Founded": "",
+                "HQ City": "",
+                "HQ State": "",
+                "Headquarters": "",
+                "Industry": "",
+                "LinkedIn Link": "",
+                "Location Match": "",
+                "Specialties": "",
+                "company": row["Company"]
+            } for _, row in rows_to_update.iterrows()
+        }
 
-        linkedin_response = requests.post(
-            f"{BACKEND_URL}/api/linkedin-info-batch",
-            json=linkedin_payload,
-            headers=auth_headers()
-        )
-        linkedin_data = linkedin_response.json()
-
-        linkedin_lookup = generate_linkedin_lookup(linkedin_data)
         print("linkedin")
         print(linkedin_lookup)
         for i, (idx, row) in enumerate(rows_to_update.iterrows()):
