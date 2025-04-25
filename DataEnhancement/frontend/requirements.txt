@@ -130,7 +130,6 @@ rich==14.0.0
 rpds-py==0.23.1
 rsa==4.9
 scikit-image==0.24.0
-scipy==1.10.1
 seaborn==0.13.2
 selenium==4.30.0
 selenium-stealth==1.0.6
