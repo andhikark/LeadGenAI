@@ -8,9 +8,6 @@ import logging
 from scraper.revenueScraper import get_company_revenue_from_growjo
 from scraper.websiteNameScraper import find_company_website
 from scraper.apollo_scraper import enrich_single_company
-from scraper.linkedinScraper.scraping.scraper import scrape_linkedin
-from scraper.linkedinScraper.scraping.login import login_to_linkedin
-from scraper.linkedinScraper.utils.chromeUtils import get_chrome_driver
 from selenium.webdriver.common.by import By
 import shutil
 
@@ -73,79 +70,21 @@ def get_revenue():
     data = get_company_revenue_from_growjo(company)
     return jsonify(data)
 
-@app.route("/api/apollo-info", methods=["POST"])
-def get_apollo_info_batch():
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "Missing request body"}), 400
+@app.route("/api/apollo-scrape-batch", methods=["POST"])
+def apollo_scrape_batch():
+    data = request.get_json()
+    domains = data.get("domains")
 
-        if isinstance(data, dict):
-            data = [data]
+    if not domains or not isinstance(domains, list):
+        return jsonify({"error": "Missing or invalid 'domains' (must be a list)"}), 400
 
-        results = []
-        for company in data:
-            domain = company.get("domain")
-            if domain:
-                enriched = enrich_single_company(domain)
-                results.append(enriched)
-            else:
-                results.append({"error": "Missing domain"})
+    results = []
+    for domain in domains:
+        enriched_data = enrich_single_company(domain)
+        enriched_data["domain"] = domain  # always return domain
+        results.append(enriched_data)
 
-        return jsonify(results), 200
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-class DummyTQDM:
-    def update(self, _):
-        pass
-
-import shutil
-
-@app.route("/api/linkedin-info-batch", methods=["POST"])
-def get_linkedin_info_batch():
-    try:
-        from scraper.linkedinScraper.utils.chromeUtils import get_chrome_driver
-        from scraper.linkedinScraper.scraping.login import login_to_linkedin
-        from scraper.linkedinScraper.scraping.scraper import scrape_linkedin
-
-        data_list = request.get_json()
-        if not isinstance(data_list, list):
-            return jsonify({"error": "Expected a list of objects"}), 400
-
-        driver = get_chrome_driver(headless=False)
-
-        # Login (optional if not using li_at)
-        login_to_linkedin(driver, os.getenv("LINKEDIN_USERNAME"), os.getenv("LINKEDIN_PASSWORD"))  
-
-        results = []
-        for entry in data_list:
-            company = entry.get("company")
-            city = entry.get("city")
-            state = entry.get("state")
-            website = entry.get("website")
-
-            if not company:
-                results.append({"error": "Missing required field: company"})
-                continue
-
-            result = scrape_linkedin(driver, company, city, state, website)
-            result["company"] = company
-            results.append(result)
-
-        driver.quit()
-
-        # 👇 DELETE THE PROFILE FOLDER
-        profile_path = os.path.abspath("linkedin_profile_1")
-        if os.path.exists(profile_path):
-            shutil.rmtree(profile_path, ignore_errors=True)
-            print(f"🧹 Deleted user profile directory: {profile_path}")
-
-        return jsonify(results), 200
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    return jsonify(results)
 
 
 @app.route("/api/growjo", methods=["POST"])
