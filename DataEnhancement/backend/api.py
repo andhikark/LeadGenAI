@@ -148,28 +148,35 @@ import shutil
 #         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/scrape-growjo", methods=["POST"])
-def scrape_growjo():
-    data = request.get_json()
-    
-    if not data or "company" not in data:
-        return jsonify({"error": "Missing 'company' in request JSON"}), 400
-
-    company = data["company"]
-    headless = data.get("headless", False)  # default: headless browser = False
-
-    scraper = GrowjoScraper(headless=headless)
+@app.route("/api/scrape-growjo-batch", methods=["POST"])
+def scrape_growjo_batch():
     try:
-        results = scraper.scrape_company(company)
+        data_list = request.get_json()
+        if not isinstance(data_list, list):
+            return jsonify({"error": "Expected a list of objects"}), 400
+
+        headless = False  # default headless for batch
+        scraper = GrowjoScraper(headless=headless)
+
+        results = []
+        for entry in data_list:
+            company = entry.get("company")
+
+            if not company:
+                results.append({"error": "Missing required field: company"})
+                continue
+
+            result = scraper.scrape_company(company)
+            result["company"] = company  # ensure company name in result
+            results.append(result)
+
+        scraper.close()
+
         return jsonify(results), 200
+
     except Exception as e:
-        print(f"[ERROR] API scraping error: {str(e)}")
         return jsonify({"error": str(e)}), 500
-    finally:
-        try:
-            scraper.close()
-        except Exception as e:
-            print(f"[ERROR] Failed closing browser: {str(e)}")
+    
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))  # Render will provide the port

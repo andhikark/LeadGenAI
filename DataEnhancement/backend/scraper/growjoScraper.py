@@ -133,60 +133,67 @@ class GrowjoScraper:
     def search_company(self, company_name):
         """
         Search for a company on Growjo and click its link if found.
+        If not found, return False safely.
         """
         try:
             print(f"\n[DEBUG] Searching for company: '{company_name}'")
             self.driver.get(GROWJO_SEARCH_URL)
             time.sleep(2)
 
-            # Try to locate search box with different methods
+            # Try to locate search box
             search_box = None
-            search_box_methods = [
+            search_methods = [
                 (By.XPATH, "//input[contains(@placeholder, 'Search')]"),
                 (By.XPATH, "//input[@type='search']"),
-                (By.CSS_SELECTOR, "input.search-input, input.form-control, input.search"),
+                (By.CSS_SELECTOR, "input.search-input, input.form-control, input.search")
             ]
-            for by, selector in search_box_methods:
+            for by, selector in search_methods:
                 try:
                     search_box = self.wait.until(EC.presence_of_element_located((by, selector)))
                     break
                 except TimeoutException:
                     continue
-            
+
             if not search_box:
                 print("[ERROR] Search box not found.")
                 return False
 
-            # Enter company name and search
+            # Input company name
             search_box.clear()
             search_box.send_keys(company_name)
             search_box.send_keys(Keys.RETURN)
-            time.sleep(4)
+            time.sleep(3)
 
-            # Try to find the company link
-            company_link = None
+            # Try finding the correct company link
             try:
-                company_link = self.wait.until(EC.presence_of_element_located((By.XPATH, f"//a[contains(text(), '{company_name}')]")))
+                company_link = self.wait.until(EC.presence_of_element_located(
+                    (By.XPATH, f"//a[starts-with(@href, '/company/') and contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{company_name.lower()}')]")
+                ))
             except TimeoutException:
-                try:
-                    company_link = self.wait.until(EC.presence_of_element_located((By.XPATH, f"//a[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{company_name.lower()}')]")))
-                except TimeoutException:
-                    company_links = self.driver.find_elements(By.XPATH, "//a[starts-with(@href, '/company/')]")
-                    if company_links:
-                        company_link = company_links[0]
-            
+                print(f"[DEBUG] No exact or partial match for '{company_name}'.")
+                return False
+
             if company_link:
-                print(f"[DEBUG] Clicking company link: {company_link.text}")
+                link_text = company_link.text.strip()
+                print(f"[DEBUG] Clicking company link: '{link_text}'")
                 company_link.click()
                 time.sleep(3)
+
+                # After click, sanity check
+                current_url = self.driver.current_url
+                if "/company/" not in current_url:
+                    print(f"[ERROR] After click, not redirected to company page. Current URL: {current_url}")
+                    return False
+
                 return True
             else:
-                print(f"[DEBUG] Company '{company_name}' not found in search results.")
+                print(f"[DEBUG] Company '{company_name}' not found.")
                 return False
 
         except Exception as e:
             print(f"[ERROR] Error searching for company '{company_name}': {str(e)}")
             return False
+
 
         
     def extract_company_details(self, company_name):
