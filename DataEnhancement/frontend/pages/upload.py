@@ -4,10 +4,12 @@ from streamlit_cookies_controller import CookieController
 import pandas as pd
 import requests
 import jwt
+import time
+from config import BACKEND_URL
+
 
 JWT_SECRET = "fallback_secret_change_me_in_production"
 JWT_ALGORITHM = "HS256"
-BACKEND_URL = "http://145.223.21.90:5050"
 
 cookies = CookieController()
 token = cookies.get("auth_token")
@@ -41,38 +43,6 @@ def auth_headers():
 def normalize_name(name):
     return name.strip().lower().replace(" ", "").replace("-", "").replace(".", "") if name else ""
 
-def generate_linkedin_lookup(response_json):
-    expected_keys = [
-        "Associated Members", "Company Website", "Domain Match", "Employees", "Founded",
-        "HQ City", "HQ State", "Headquarters", "Industry", "LinkedIn Link",
-        "Location Match", "Specialties", "company"
-    ]
-
-    # If it's a single empty dict or not a list, fallback
-    if not isinstance(response_json, list) or len(response_json) == 0:
-        st.warning("LinkedIn API returned empty or malformed data. Returning fallback entry.")
-        fallback = {key: "" for key in expected_keys}
-        return { "": fallback }
-
-    formatted_list = []
-    for r in response_json:
-        if not isinstance(r, dict):
-            continue
-        # Fill missing keys with ""
-        formatted_entry = {key: r.get(key, "") for key in expected_keys}
-        formatted_list.append(formatted_entry)
-
-    # If all entries are filtered out or company field missing, fallback
-    if not any(r.get("company") for r in formatted_list):
-        fallback = {key: "" for key in expected_keys}
-        return { "": fallback }
-
-    return {
-        normalize_name(r["company"]): r
-        for r in formatted_list
-        if r.get("company")
-    }
-
 def split_name(full_name):
     parts = full_name.strip().split()
     if len(parts) == 0:
@@ -97,7 +67,7 @@ if "confirmed_selection_df" not in st.session_state:
 STANDARD_COLUMNS = [
     'Company', 'City', 'State', 'First Name', 'Last Name', 'Email', 'Title', 'Website',
     'LinkedIn URL', 'Industry ', 'Revenue', 'Product/Service Category',
-    'Business Type (B2B, B2B2C) ', 'Associated Members', 'Employees range', 'Rev Source', 'Year Founded',
+    'Business Type (B2B, B2B2C) ', 'Associated Members', 'Employees count', 'Rev Source', 'Year Founded',
     "Owner's LinkedIn", 'Owner Age', 'Phone Number', 'Additional Notes', 'Score',
     'Email customization #1', 'Subject Line #1', 'Email Customization #2', 'Subject Line #2',
     'LinkedIn Customization #1', 'LinkedIn Customization #2', 'Reasoning for r//y/g'
@@ -174,6 +144,7 @@ if st.session_state.confirmed_selection_df is not None:
 if st.session_state.normalized_df is not None and st.session_state.confirmed_selection_df is not None:
     if st.button("🚀 Enhance with Apollo, LinkedIn, and Growjo Data"):
         st.markdown("⏳ Please wait while we enrich company data...")
+        start_time = time.time()
         progress_bar = st.progress(0)
         status_text = st.empty()
 
@@ -184,34 +155,20 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
         mask = base_df["Company"].isin(confirmed_df["Company"])
         rows_to_update = enhanced_df[mask].copy()
 
-        apollo_domains = rows_to_update["Company"].dropna().unique().tolist()
-        apollo_response = requests.post(f"{BACKEND_URL}/api/apollo-info", json=[{"domain": d} for d in apollo_domains], headers=auth_headers())
+        apollo_domains = rows_to_update["Website"].dropna().unique().tolist()
+        apollo_domains = [w.replace("http://", "").replace("https://", "").replace("www.", "").strip().lower() for w in apollo_domains]
+
+        apollo_response = requests.post(
+            f"{BACKEND_URL}/api/apollo-scrape-batch",
+            json={"domains": apollo_domains}
+        )
+        print(apollo_response.json)
         apollo_lookup = {r["domain"]: r for r in apollo_response.json() if "domain" in r}
 
-        linkedin_lookup = {
-            normalize_name(row["Company"]): {
-                "Associated Members": "",
-                "Company Website": "",
-                "Domain Match": "",
-                "Employees": "",
-                "Founded": "",
-                "HQ City": "",
-                "HQ State": "",
-                "Headquarters": "",
-                "Industry": "",
-                "LinkedIn Link": "",
-                "Location Match": "",
-                "Specialties": "",
-                "company": row["Company"]
-            } for _, row in rows_to_update.iterrows()
-        }
-
-        print("linkedin")
-        print(linkedin_lookup)
         for i, (idx, row) in enumerate(rows_to_update.iterrows()):
+            domain_appolo = row["Website"].replace("http://", "").replace("https://", "").replace("www.", "").strip().lower()
             domain = row["Company"]
-            apollo = apollo_lookup.get(domain, {})
-            linkedin = linkedin_lookup.get(normalize_name(domain), {})
+            apollo = apollo_lookup.get(domain_appolo, {})
 
             revenue = apollo.get("annual_revenue_printed", "")
             if not revenue:
@@ -225,19 +182,19 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
             if not row["Revenue"].strip():
                 rows_to_update.at[idx, "Revenue"] = revenue
             if not row["Year Founded"].strip():
-                rows_to_update.at[idx, "Year Founded"] = apollo.get("founded_year", "") or linkedin.get("Founded", "")
+                rows_to_update.at[idx, "Year Founded"] = apollo.get("founded_year", "")
             if not row["Website"].strip():
                 rows_to_update.at[idx, "Website"] = apollo.get("website_url", "")
             if not row["LinkedIn URL"].strip():
-                rows_to_update.at[idx, "LinkedIn URL"] = apollo.get("linkedin_url", "") or linkedin.get("LinkedIn Link", "")
+                rows_to_update.at[idx, "LinkedIn URL"] = apollo.get("linkedin_url", "") 
             if not row["Industry "].strip():
-                rows_to_update.at[idx, "Industry "] = linkedin.get("Industry", "")
+                rows_to_update.at[idx, "Industry "] = ""
             if not row["Associated Members"].strip():
-                rows_to_update.at[idx, "Associated Members"] = linkedin.get("Associated Members", "")
+                rows_to_update.at[idx, "Associated Members"] = ""
             if not row["Employees range"].strip():
-                rows_to_update.at[idx, "Employees range"] = linkedin.get("Employees", "")
+                rows_to_update.at[idx, "Employees range"] = apollo.get("employee_count", "")
             if not row["Product/Service Category"].strip():
-                rows_to_update.at[idx, "Product/Service Category"] = linkedin.get("Specialties", "")
+                rows_to_update.at[idx, "Product/Service Category"] = apollo.get("keywords", "")
 
             # === Growjo Contact Info Integration ===
             growjo_res = requests.post(f"{BACKEND_URL}/api/growjo", json={"company": domain, "headless": True}, headers=auth_headers())
@@ -272,7 +229,11 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
 
         enhanced_df.update(rows_to_update)
 
-        st.success("✅ Enrichment complete!")
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+
+        minutes = elapsed_time / 60
+        st.success(f"✅ Enrichment complete in {minutes:.2f} minutes!")
         st.dataframe(enhanced_df.head(), use_container_width=True)
         csv = enhanced_df.to_csv(index=False).encode("utf-8")
         st.download_button("📥 Download Enhanced CSV", csv, file_name="apollo_linkedin_growjo_enriched.csv", mime="text/csv")
