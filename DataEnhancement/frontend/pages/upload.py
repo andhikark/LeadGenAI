@@ -142,7 +142,7 @@ if st.session_state.confirmed_selection_df is not None:
         st.download_button("📥 Download Normalized CSV", data=normalized_df.to_csv(index=False).encode("utf-8"), file_name="normalized_leads.csv", mime="text/csv")
 
 if st.session_state.normalized_df is not None and st.session_state.confirmed_selection_df is not None:
-    if st.button("🚀 Enhance with Apollo, LinkedIn, and Growjo Data"):
+    if st.button("🚀 Enrich Data"):
         st.markdown("⏳ Please wait while we enrich company data...")
         start_time = time.time()
         progress_bar = st.progress(0)
@@ -162,25 +162,36 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
             f"{BACKEND_URL}/api/apollo-scrape-batch",
             json={"domains": apollo_domains}
         )
-        print(apollo_response.json)
         apollo_lookup = {r["domain"]: r for r in apollo_response.json() if "domain" in r}
+
+        # Prepare list for batch call
+        growjo_request = [{"company": row["Company"]} for idx, row in rows_to_update.iterrows()]
+
+        # Send batch request
+        growjo_response = requests.post(
+            f"{BACKEND_URL}/api/scrape-growjo-batch",
+            json=growjo_request,
+            headers=auth_headers()
+        )
+        growjo_results = {item["company"].lower(): item for item in growjo_response.json() if "company" in item}
+
 
         for i, (idx, row) in enumerate(rows_to_update.iterrows()):
             domain_appolo = row["Website"].replace("http://", "").replace("https://", "").replace("www.", "").strip().lower()
             domain = row["Company"]
             apollo = apollo_lookup.get(domain_appolo, {})
+            growjo = growjo_results.get(domain.lower(), {})
 
-            revenue = apollo.get("annual_revenue_printed", "")
-            if not revenue:
-                try:
-                    growjo_response = requests.get(f"{BACKEND_URL}/api/get-revenue", params={"company": domain}, headers=auth_headers())
-                    if growjo_response.status_code == 200:
-                        revenue = growjo_response.json().get("estimated_revenue", "")
-                except:
-                    revenue = ""
 
             if not row["Revenue"].strip():
-                rows_to_update.at[idx, "Revenue"] = revenue
+                revenue = apollo.get('annual_revenue_printed', '')
+                if revenue:
+                    rows_to_update.at[idx, "Revenue"] = f"${revenue}"
+                    rows_to_update.at[idx, "Rev Source"] = "Apollo"
+                else:
+                    rows_to_update.at[idx, "Revenue"] = ""
+                    rows_to_update.at[idx, "Rev Source"] = ""
+
             if not row["Year Founded"].strip():
                 rows_to_update.at[idx, "Year Founded"] = apollo.get("founded_year", "")
             if not row["Website"].strip():
@@ -191,38 +202,29 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
                 rows_to_update.at[idx, "Industry "] = ""
             if not row["Associated Members"].strip():
                 rows_to_update.at[idx, "Associated Members"] = ""
-            if not row["Employees range"].strip():
-                rows_to_update.at[idx, "Employees range"] = apollo.get("employee_count", "")
+            if not row["Employees count"].strip():
+                rows_to_update.at[idx, "Employees count"] = apollo.get("employee_count", "")
             if not row["Product/Service Category"].strip():
                 rows_to_update.at[idx, "Product/Service Category"] = apollo.get("keywords", "")
 
-            # === Growjo Contact Info Integration ===
-            growjo_res = requests.post(f"{BACKEND_URL}/api/growjo", json={"company": domain, "headless": True}, headers=auth_headers())
-            if growjo_res.status_code == 200:
-                people = growjo_res.json()
-                if people:
-                    person = people[0]
-                    first, last = split_name(person.get("name", ""))
-                    contact = person.get("contact_info", "")
-                    email = ""
-                    phone = ""
-                    for line in contact.split("\n"):
-                        if "email" in line.lower():
-                            email = line.split(":")[-1].strip()
-                        if "phone" in line.lower():
-                            phone = line.split(":")[-1].strip()
-                    if not row["First Name"].strip():
-                        rows_to_update.at[idx, "First Name"] = first
-                    if not row["Last Name"].strip():
-                        rows_to_update.at[idx, "Last Name"] = last
-                    if not row["Email"].strip():
-                        rows_to_update.at[idx, "Email"] = email
-                    if not row["Phone Number"].strip():
-                        rows_to_update.at[idx, "Phone Number"] = phone
-                    if not row["Owner's LinkedIn"].strip():
-                        rows_to_update.at[idx, "Owner's LinkedIn"] = person.get("linkedin", "")
-                    if not row["Title"].strip():
-                        rows_to_update.at[idx, "Title"] = person.get("title", "")
+            if not row["Email"].strip() and growjo.get("decider_email"):
+                rows_to_update.at[idx, "Email"] = growjo.get("decider_email", "")
+            if not row["Phone Number"].strip() and growjo.get("decider_phone"):
+                rows_to_update.at[idx, "Phone Number"] = growjo.get("decider_phone", "")
+            if not row["Owner's LinkedIn"].strip() and growjo.get("decider_linkedin"):
+                rows_to_update.at[idx, "Owner's LinkedIn"] = growjo.get("decider_linkedin", "")
+            if not row["Title"].strip() and growjo.get("decider_title"):
+                rows_to_update.at[idx, "Title"] = growjo.get("decider_title", "")
+            if not row["Industry "].strip() and growjo.get("industry"):
+                rows_to_update.at[idx, "Industry "] = growjo.get("industry", "")
+
+            decider_name = growjo.get("decider_name", "")
+            first_name, last_name = split_name(decider_name)
+
+            if not row["First Name"].strip():
+                rows_to_update.at[idx, "First Name"] = first_name
+            if not row["Last Name"].strip():
+                rows_to_update.at[idx, "Last Name"] = last_name
 
             progress_bar.progress((i + 1) / len(rows_to_update))
             status_text.text(f"Enhanced {i + 1} of {len(rows_to_update)} rows")
