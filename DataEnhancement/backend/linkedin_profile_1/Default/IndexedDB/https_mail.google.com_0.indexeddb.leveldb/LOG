@@ -1,6 +1,0 @@
-2025/04/19-21:35:07.348 3c80 Reusing MANIFEST D:\LeadGenAI\DataEnhancement\backend\linkedin_profile_1\Default\IndexedDB\https_mail.google.com_0.indexeddb.leveldb/MANIFEST-000001
-2025/04/19-21:35:07.348 3c80 Recovering log #3
-2025/04/19-21:35:07.349 3c80 Reusing old log D:\LeadGenAI\DataEnhancement\backend\linkedin_profile_1\Default\IndexedDB\https_mail.google.com_0.indexeddb.leveldb/000003.log 
-2025/04/19-21:35:51.826 3504 Level-0 table #5: started
-2025/04/19-21:35:51.877 3504 Level-0 table #5: 3006903 bytes OK
-2025/04/19-21:35:51.879 3504 Delete type=0 #3
