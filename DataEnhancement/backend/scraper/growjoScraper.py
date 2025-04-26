@@ -1,9 +1,6 @@
 import os
 import time
-import argparse
-import pandas as pd
 from dotenv import load_dotenv
-from tqdm import tqdm
 from selenium import webdriver
 from selenium.webdriver.edge.options import Options
 from selenium.webdriver.common.by import By
@@ -11,6 +8,8 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.service import Service
 
 # Load environment variables
 load_dotenv()
@@ -130,590 +129,334 @@ class GrowjoScraper:
                 pass
             
             raise
-    
+
     def search_company(self, company_name):
-        """Search for a company on Growjo.com."""
+        """
+        Search for a company on Growjo and click its link if found.
+        """
         try:
-            print(f"Searching for company: {company_name}")
+            print(f"\n[DEBUG] Searching for company: '{company_name}'")
             self.driver.get(GROWJO_SEARCH_URL)
-            
-            # Wait for page to load
-            time.sleep(3)
-            
-            # Try different methods to find the search box
-            try:
-                # First try by placeholder
-                search_box = self.wait.until(EC.presence_of_element_located((By.XPATH, "//input[contains(@placeholder, 'Search')]")))
-            except TimeoutException:
+            time.sleep(2)
+
+            # Try to locate search box with different methods
+            search_box = None
+            search_box_methods = [
+                (By.XPATH, "//input[contains(@placeholder, 'Search')]"),
+                (By.XPATH, "//input[@type='search']"),
+                (By.CSS_SELECTOR, "input.search-input, input.form-control, input.search"),
+            ]
+            for by, selector in search_box_methods:
                 try:
-                    # Try by type search
-                    search_box = self.wait.until(EC.presence_of_element_located((By.XPATH, "//input[@type='search']")))
+                    search_box = self.wait.until(EC.presence_of_element_located((by, selector)))
+                    break
                 except TimeoutException:
-                    try:
-                        # Try by common search class names
-                        search_box = self.wait.until(EC.presence_of_element_located(
-                            (By.CSS_SELECTOR, "input.search-input, input.form-control, input.search")))
-                    except TimeoutException:
-                        # Save page source for debugging
-                        # DEBUG: Saving HTML and screenshot of search page to identify search input elements
-                        
-                        # Try to find all inputs for debugging
-                        inputs = self.driver.find_elements(By.TAG_NAME, "input")
-                        print(f"Found {len(inputs)} input fields")
-                        for i, inp in enumerate(inputs):
-                            print(f"Input {i}: type={inp.get_attribute('type')}, placeholder={inp.get_attribute('placeholder')}")
-                        
-                        # If we still can't find the search box, raise an exception
-                        raise Exception("Could not find search box on page")
+                    continue
             
-            # Clear and enter company name
+            if not search_box:
+                print("[ERROR] Search box not found.")
+                return False
+
+            # Enter company name and search
             search_box.clear()
             search_box.send_keys(company_name)
             search_box.send_keys(Keys.RETURN)
-            
-            # Wait for search results to load
-            time.sleep(5)
-            
-            # Save search results page for debugging
-            # DEBUG: Saving HTML and screenshot of search results to analyze result structure and verify company matches
-            
-            # Try different methods to find the company link
+            time.sleep(4)
+
+            # Try to find the company link
+            company_link = None
             try:
-                # Exact match
-                company_link = self.wait.until(EC.presence_of_element_located(
-                    (By.XPATH, f"//a[contains(text(), '{company_name}')]")))
+                company_link = self.wait.until(EC.presence_of_element_located((By.XPATH, f"//a[contains(text(), '{company_name}')]")))
             except TimeoutException:
                 try:
-                    # Partial match
-                    company_link = self.wait.until(EC.presence_of_element_located(
-                        (By.XPATH, f"//a[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{company_name.lower()}')]")))
+                    company_link = self.wait.until(EC.presence_of_element_located((By.XPATH, f"//a[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{company_name.lower()}')]")))
                 except TimeoutException:
-                    try:
-                        # Try to find any search result
-                        company_links = self.driver.find_elements(By.CSS_SELECTOR, ".search-result a, .company-name a, .result-item a")
-                        if company_links:
-                            company_link = company_links[0]  # Take the first result
-                            print(f"Could not find exact match, using first result: {company_link.text}")
-                        else:
-                            print(f"No search results found for '{company_name}'")
-                            return False
-                    except:
-                        print(f"Company '{company_name}' not found in search results")
-                        return False
+                    company_links = self.driver.find_elements(By.XPATH, "//a[starts-with(@href, '/company/')]")
+                    if company_links:
+                        company_link = company_links[0]
             
-            # Click on the company link
-            print(f"Found company: {company_link.text}")
-            company_link.click()
-            time.sleep(5)
-            
-                
-            return True
-                
+            if company_link:
+                print(f"[DEBUG] Clicking company link: {company_link.text}")
+                company_link.click()
+                time.sleep(3)
+                return True
+            else:
+                print(f"[DEBUG] Company '{company_name}' not found in search results.")
+                return False
+
         except Exception as e:
-            print(f"Error searching for company: {str(e)}")
+            print(f"[ERROR] Error searching for company '{company_name}': {str(e)}")
             return False
-    
-    def is_phone_number(self, text):
-        """Check if a string is likely to be a phone number.
-        
-        A string is considered a phone number if:
-        1. It contains only digits, spaces, and phone separators (+, -, (, ), .)
-        2. It contains at least 7 digits (common minimum for phone numbers)
-        """
-        # Count digits in the text
-        digit_count = sum(c.isdigit() for c in text)
-        
-        # Check if it contains only digits and common phone separators
-        valid_chars = set("0123456789+- ().")
-        is_valid_format = all(c in valid_chars or c.isspace() for c in text)
-        
-        return is_valid_format and digit_count >= 7
 
-    def get_decision_makers(self):
-        """Extract decision makers' information from the company page."""
-        decision_makers = []
         
+    def extract_company_details(self, company_name):
+        details = {"company": company_name, "city": "", "state": "", "industry": "", "website": "", "employees": "", "revenue": "", "specialties": ""}
         try:
-            print("Looking for decision makers table...")
-            
-            # Try to find the table with decision makers
+            # City
             try:
-                # Look for table with headers "Name", "Title", "Email/Phone"
-                people_table = self.wait.until(EC.presence_of_element_located(
-                    (By.XPATH, "//table[contains(@class, 'table') and .//th[contains(text(), 'Name')] and .//th[contains(text(), 'Title')] and .//th[contains(text(), 'Email/Phone')]]")))
-                print("Found decision makers table!")
-            except TimeoutException:
-                # Try a more generic approach
-                try:
-                    people_table = self.wait.until(EC.presence_of_element_located(
-                        (By.XPATH, "//h2[contains(text(), 'People') or contains(text(), 'Decision Maker')]/following::table[1]")))
-                    print("Found table after 'People' heading")
-                except TimeoutException:
-                    # Try to find any table on the page
-                    tables = self.driver.find_elements(By.TAG_NAME, "table")
-                    if tables:
-                        people_table = tables[0]  # Use the first table
-                        print(f"Using first table found of {len(tables)} tables")
-                    else:
-                        print("No tables found on the page")
-                        return []
-            
-            # Find all rows in the table (skip the header row)
-            rows = people_table.find_elements(By.TAG_NAME, "tr")[1:]  # Skip header row
-            print(f"Found {len(rows)} decision makers")
-            
-            # Process each row - but get a fresh reference to each row, one at a time
-            for idx in range(len(rows)):
-                try:
-                    print(f"Processing row {idx+1}/{len(rows)}")
-                    
-                    # Get fresh reference to table and rows each time
-                    try:
-                        # Look for table with headers "Name", "Title", "Email/Phone"
-                        people_table = self.wait.until(EC.presence_of_element_located(
-                            (By.XPATH, "//table[contains(@class, 'table') and .//th[contains(text(), 'Name')] and .//th[contains(text(), 'Title')] and .//th[contains(text(), 'Email/Phone')]]")))
-                        
-                        # Get all rows again (skip header)
-                        current_rows = people_table.find_elements(By.TAG_NAME, "tr")[1:]
-                        
-                        # Only proceed if we still have enough rows
-                        if idx < len(current_rows):
-                            row = current_rows[idx]
-                        else:
-                            print(f"Row {idx+1} no longer exists, skipping")
-                            continue
-                    except Exception as e:
-                        print(f"Could not get fresh reference to table or row {idx+1}: {str(e)}")
-                        continue
-                    
-                    # Get the columns
-                    cols = row.find_elements(By.TAG_NAME, "td")
-                    
-                    if len(cols) >= 3:  # Name, Title, Email/Phone
-                        # Extract name - look for the link within the first column
-                        name_col = cols[0]
-                        name = ""
-                        try:
-                            # Exact the number and remove it from the display
-                            name_text = name_col.text.strip()
-                            if name_text.startswith("#"):
-                                # Remove the leading #number
-                                name_text = name_text[name_text.find(" "):].strip()
-                            elif name_text[0].isdigit():
-                                # If it starts with a digit, find the first space
-                                idx_space = name_text.find(" ")
-                                if idx_space > 0:
-                                    name_text = name_text[idx_space:].strip()
-                            
-                            # Look for name in an <a> tag
-                            links = name_col.find_elements(By.TAG_NAME, "a")
-                            for link in links:
-                                link_text = link.text.strip()
-                                if link_text and not "linkedin.com" in link.get_attribute("href").lower():
-                                    name = link_text
-                                    break
-                            
-                            # If no name found in links, use the text content
-                            if not name:
-                                name = name_text
-                        except Exception as e:
-                            print(f"Error extracting name: {str(e)}")
-                            name = name_col.text.strip()
-                        
-                        # Extract title from second column
-                        title = cols[1].text.strip()
-                        
-                        # Extract LinkedIn URL if available
-                        linkedin_url = ""
-                        try:
-                            linkedin_elems = name_col.find_elements(By.XPATH, ".//a[contains(@href, 'linkedin.com')]")
-                            if linkedin_elems:
-                                linkedin_url = linkedin_elems[0].get_attribute("href")
-                        except:
-                            pass
-                        
-                        # Look for the "Reveal Email/Phone" button in the third column
-                        contact_info = ""
-                        reveal_button = None
-                        try:
-                            # Find reveal button
-                            reveal_buttons = cols[2].find_elements(By.XPATH, 
-                                ".//a[contains(text(), 'Reveal Email/Phone')] | .//button[contains(text(), 'Reveal Email/Phone')]")
-                            
-                            if reveal_buttons:
-                                reveal_button = reveal_buttons[0]
-                                print(f"Found reveal button for {name}")
-                                
-                                # Save the href attribute which contains the employee URL
-                                employee_url = reveal_button.get_attribute("href")
-                                
-                                # If there's no href, construct the URL from the person's name
-                                if not employee_url:
-                                    # Create a URL-friendly name format
-                                    name_for_url = name.replace(" ", "-").replace("/", "-")
-                                    # Construct employee URL based on Growjo's URL pattern
-                                    employee_url = f"https://growjo.com/employee/{name_for_url}"
-                                    print(f"Constructed employee URL: {employee_url}")
-                                
-                                print(f"Employee URL: {employee_url}")
-                                
-                                # Always navigate to the employee page
-                                self.driver.get(employee_url)
-                                time.sleep(2)
-                                
-                                # Save employee page HTML for analysis
-                                print(f"Saved employee page HTML and screenshot for {name}")
-                                # DEBUG: Saving HTML and screenshot of employee page before revealing contact info to examine initial state
-                                
-                                # Extract LinkedIn URL from the employee page - this is more accurate than from company page
-                                linkedin_url = ""
-                                try:
-                                    linkedin_elems = self.driver.find_elements(By.XPATH, 
-                                        "//a[contains(@href, 'linkedin.com')]")
-                                    if linkedin_elems:
-                                        linkedin_url = linkedin_elems[0].get_attribute("href")
-                                        print(f"Found LinkedIn URL on employee page: {linkedin_url}")
-                                except Exception as e:
-                                    print(f"Error extracting LinkedIn URL: {str(e)}")
-                                
-                                # On the employee page, find and click the "Reveal" button
-                                email = ""
-                                phone = ""
-                                try:
-                                    # Look for reveal buttons on the employee page
-                                    reveal_buttons = self.driver.find_elements(By.XPATH, 
-                                        "//button[contains(text(), 'Reveal')] | //a[contains(text(), 'Reveal')]")
-                                    
-                                    if reveal_buttons:
-                                        print(f"Found {len(reveal_buttons)} reveal buttons on employee page")
-                                        for btn in reveal_buttons:
-                                            try:
-                                                print(f"Attempting to click reveal button: {btn.text}")
-                                                # Try different methods to click
-                                                try:
-                                                    # Try regular click first
-                                                    btn.click()
-                                                except:
-                                                    # If that fails, try JavaScript click
-                                                    self.driver.execute_script("arguments[0].scrollIntoView(true);", btn)
-                                                    self.driver.execute_script("arguments[0].click();", btn)
-                                                    
-                                                time.sleep(2)  # Wait for reveal
-                                            except Exception as e:
-                                                print(f"Failed to click reveal button: {str(e)}")
-                                        
-                                        # Save screenshot after clicking reveal
-                                        # DEBUG: Capturing screenshot after reveal button click to verify contact info exposure
-                                    
-                                    # Look for revealed contact info
-                                    # Email is often in elements with data attributes or specific classes
-                                    try:
-                                        # Target div with class="head" and "wpr" as specified by user
-                                        email_elements = self.driver.find_elements(By.XPATH, 
-                                            "//div[contains(@class, 'head')]//div[contains(@class, 'wpr')]//*[contains(text(), '@')] | //a[contains(@href, 'mailto:')] | //*[contains(@class, 'email')] | //*[contains(text(), '@')]")
-                                        
-                                        for elem in email_elements:
-                                            text = elem.text.strip()
-                                            if '@' in text and '.' in text and not text.startswith('http'):
-                                                email = text
-                                                print(f"Found email: {email}")
-                                                break
-                                                
-                                            href = elem.get_attribute('href')
-                                            if href and 'mailto:' in href:
-                                                email = href.replace('mailto:', '').strip()
-                                                print(f"Found email from href: {email}")
-                                                break
-                                    except Exception as e:
-                                        print(f"Error extracting email: {str(e)}")
-                                    
-                                    # Look for phone numbers - often has specific formatting
-                                    try:
-                                        # First check the specific path mentioned in the HTML structure:
-                                        # class="info" > class="wpr" > href="/join"
-                                        phone_specific_path = self.driver.find_elements(By.XPATH, 
-                                            "//div[contains(@class, 'info')]//div[contains(@class, 'wpr')]//a[contains(@href, '/join')]")
-                                        
-                                        # Check elements in the specific path
-                                        for elem in phone_specific_path:
-                                            text = elem.text.strip()
-                                            if text and self.is_phone_number(text):
-                                                phone = text
-                                                print(f"Found phone from specific path: {phone}")
-                                                break
-                                                
-                                        # If no phone found yet, try the generic approach
-                                        if not phone:
-                                            # Target div with class="head" and "wpr" as specified
-                                            # Only look for phone elements within the contact-info section
-                                            # and make sure we're not in a company section
-                                            phone_elements = self.driver.find_elements(By.XPATH, 
-                                                "//div[contains(@class, 'contact-info')]//div[contains(@class, 'wpr')]//*[contains(text(), '(') or contains(text(), '+') or contains(text(), '-')] | //div[contains(@class, 'contact-info')]//*[contains(@class, 'phone')] | //div[contains(@class, 'contact-info')]//*[contains(text(), '(') and contains(text(), ')')]")
-                                            
-                                            for elem in phone_elements:
-                                                text = elem.text.strip()
-                                                # Check if text is a phone number
-                                                if self.is_phone_number(text):
-                                                    # Make sure we're not in a company section
-                                                    parent_text = self.driver.execute_script(
-                                                        "return arguments[0].parentElement.parentElement.textContent;", 
-                                                        elem
-                                                    )
-                                                    if parent_text and "company" in parent_text.lower():
-                                                        print(f"Skipping company phone: {text}")
-                                                        continue
-                                                        
-                                                    phone = text
-                                                    print(f"Found phone: {phone}")
-                                                    break
-                                                    
-                                                # Also check href
-                                                href = elem.get_attribute('href')
-                                                if href and 'tel:' in href:
-                                                    phone = href.replace('tel:', '').strip()
-                                                    print(f"Found phone from href: {phone}")
-                                                    break
-                                    except Exception as e:
-                                        print(f"Error extracting phone: {str(e)}")
-                                    
-                                    # Also look for contact info in text format
-                                    if not email or not phone:
-                                        # Add direct extraction from div.head and div.wpr
-                                        try:
-                                            # Get all text from the divs with class="head" and "wpr"
-                                            wpr_divs = self.driver.find_elements(By.XPATH, "//div[contains(@class, 'head')]//div[contains(@class, 'wpr')]")
-                                            
-                                            for div in wpr_divs:
-                                                div_text = div.text.strip()
-                                                print(f"Found div.wpr content: {div_text}")
-                                                
-                                                # Extract email if not already found
-                                                if not email:
-                                                    email_lines = [line for line in div_text.split('\n') if '@' in line and '.' in line]
-                                                    if email_lines:
-                                                        email = email_lines[0].strip()
-                                                        print(f"Found email from div.wpr: {email}")
-                                                
-                                                # Extract phone if not already found
-                                                if not phone:
-                                                    # Check each line to see if it's a phone number
-                                                    for line in div_text.split('\n'):
-                                                        if self.is_phone_number(line):
-                                                            # Skip if this is in a company section
-                                                            parent_elem = self.driver.execute_script(
-                                                                "return arguments[0].parentElement.parentElement.textContent;", 
-                                                                div
-                                                            )
-                                                            if parent_elem and ("company" in parent_elem.lower() or 
-                                                                              "numbers" in parent_elem.lower()):
-                                                                print(f"Skipping likely company phone: {line}")
-                                                                continue
-                                                                
-                                                            phone = line.strip()
-                                                            print(f"Found phone from div.wpr: {phone}")
-                                                            break
-                                        except Exception as e:
-                                            print(f"Error extracting from div.wpr: {str(e)}")
-                                        
-                                        # Also check original contact sections
-                                        contact_sections = self.driver.find_elements(By.XPATH, 
-                                            "//h2[contains(text(), 'Contact Information')]/following-sibling::div[1] | //div[contains(@class, 'contact')]")
-                                        
-                                        for section in contact_sections:
-                                            text = section.text.strip()
-                                            print(f"Contact section text: {text}")
-                                            
-                                            # Extract email if not already found
-                                            if not email:
-                                                email_match = [line for line in text.split('\n') if '@' in line and '.' in line]
-                                                if email_match:
-                                                    email = email_match[0].strip()
-                                                    print(f"Found email from text: {email}")
-                                            
-                                            # Extract phone if not already found
-                                            if not phone:
-                                                for line in text.split('\n'):
-                                                    if self.is_phone_number(line):
-                                                        # Skip if this contains company-related text
-                                                        if "company" in text.lower() or "numbers" in text.lower():
-                                                            print(f"Skipping company phone from contact section: {line}")
-                                                            continue
-                                                        phone = line.strip()
-                                                        print(f"Found phone from contact section: {phone}")
-                                                        break
-                                except Exception as e:
-                                    print(f"Error revealing contact info: {str(e)}")
-                                
-                                # Save the complete contact info
-                                contact_info = ""
-                                if email:
-                                    contact_info += f"Email: {email}\n"
-                                
-                                # Filter out company phone numbers by checking for patterns in surrounding text
-                                if phone:
-                                    # Check phone isn't from a company section by looking at the page again
-                                    phone_element = None
-                                    try:
-                                        # Find elements containing the phone number
-                                        phone_elements = self.driver.find_elements(By.XPATH, 
-                                            f"//*[contains(text(), '{phone}')]")
-                                        
-                                        for elem in phone_elements:
-                                            # Check if this element or any parent contains company-related text
-                                            parent_content = self.driver.execute_script(
-                                                """
-                                                let element = arguments[0];
-                                                let text = '';
-                                                // Check up to 3 levels of parents
-                                                for (let i = 0; i < 3; i++) {
-                                                    if (!element) break;
-                                                    text += element.textContent || '';
-                                                    element = element.parentElement;
-                                                }
-                                                return text;
-                                                """, 
-                                                elem
-                                            )
-                                            
-                                            if parent_content and (
-                                                "company" in parent_content.lower() or 
-                                                "company phone" in parent_content.lower() or
-                                                "phone numbers" in parent_content.lower()
-                                            ):
-                                                print(f"Identified {phone} as a company phone number from context - skipping")
-                                                phone = None
-                                                break
-                                    except Exception as e:
-                                        print(f"Error during final phone verification: {str(e)}")
-                                
-                                # Now add phone to contact info if it's still valid
-                                if phone:
-                                    contact_info += f"Phone: {phone}\n"
-                                else:
-                                    contact_info += "Phone: not found\n"
-                                    
-                                # If we have no meaningful contact info at all
-                                if not email and not phone:
-                                    try:
-                                        contact_info = "Email: not found\nPhone: not found"
-                                    except:
-                                        pass
-                                    
-                                # Go back to the company page
-                                self.driver.back()
-                                time.sleep(3)  # Increased wait time for page to load completely
-                                
-                            else:
-                                # No reveal button, see if contact info is already visible
-                                contact_info = cols[2].text.strip()
-                                if contact_info == "Reveal Email/Phone":
-                                    contact_info = ""
-                        except Exception as e:
-                            print(f"Error processing reveal button: {str(e)}")
-                        
-                        # Add to our list
-                        decision_makers.append({
-                            "name": name,
-                            "title": title,
-                            "contact_info": contact_info,
-                            "linkedin": linkedin_url,
-                            "company": "Lyten"  # This will be overwritten correctly later
-                        })
-                        print(f"Added decision maker: {name}, {title}")
-                    
-                except Exception as e:
-                    print(f"Error processing row: {str(e)}")
-                    continue
-            
-            return decision_makers
-            
+                city_elem = self.driver.find_element(By.XPATH, "//a[contains(@href, '/city/')]")
+                details["city"] = city_elem.text.strip()
+            except:
+                pass
+            # State
+            try:
+                state_elem = self.driver.find_element(By.XPATH, "//a[contains(@href, '/state/')]")
+                details["state"] = state_elem.text.strip()
+            except:
+                pass
+            # Industry
+            try:
+                industry_elem = self.driver.find_element(By.XPATH, "//a[contains(@href, '/industry/')]")
+                details["industry"] = industry_elem.text.strip()
+            except:
+                pass
+            # Website
+            try:
+                website_elem = self.driver.find_element(By.XPATH, "//a[contains(@target, '_blank') and contains(@href, '//') and img]")
+                details["website"] = website_elem.get_attribute("href").replace("//", "https://") if website_elem.get_attribute("href").startswith("//") else website_elem.get_attribute("href")
+            except:
+                pass
+            # Revenue (est)
+            try:
+                emp_elem = self.driver.find_elements(By.XPATH, "//p[contains(@style, 'font-size: 18px') and contains(@style, 'font-weight: bold')]")
+                if emp_elem:
+                    details["revenue"] = emp_elem[0].text.strip()
+                if len(emp_elem) > 1:
+                    details["employees"] = emp_elem[1].text.strip()
+            except:
+                pass
+            # Keywords
+            try:
+                keywords_elem = self.driver.find_element(By.XPATH, "//strong[contains(text(), 'keywords:')]")
+                parent = keywords_elem.find_element(By.XPATH, "..")
+                parent_text = parent.text
+                if 'keywords:' in parent_text:
+                    specialties = parent_text.split('keywords:', 1)[1].strip()
+                    details["specialties"] = specialties
+                else:
+                    details["specialties"] = ''
+            except:
+                details["specialties"] = ''
         except Exception as e:
-            print(f"Error getting decision makers: {str(e)}")
-            return []
+            print(f"Error extracting details for {company_name}: {str(e)}")
+        return details
     
-    def scrape_company(self, company_name):
-        """Search for a company and scrape its decision makers' information."""
-        if not self.logged_in:
-            self.login()
-            
-        if self.search_company(company_name):
-            # Wait a moment for the company page to fully load
+    def find_decision_maker(self):
+        try:
+            print("[DEBUG] Looking for decision makers...")
+
+            try:
+                people_table = self.wait.until(EC.presence_of_element_located((
+                    By.XPATH, "//h2[contains(., 'People')]/following::table[1]"
+                )))
+            except TimeoutException:
+                print("[DEBUG] People table not found.")
+                return None
+
+            rows = people_table.find_elements(By.TAG_NAME, "tr")[1:]  # Skip header row
+
+            print(f"[DEBUG] Found {len(rows)} people listed.")
+
+            priority_patterns = {
+                "President": ["president"],
+                "Owner": ["owner"],
+                "Founder": ["founder", "co-founder", "cofounder", "founding partner"],
+                "Director": ["director", "managing director", "executive director"],
+                "CEO": ["ceo", "chief executive officer"],
+                "CTO": ["cto", "chief technology officer"],
+                "CFO": ["cfo", "chief financial officer"],
+                "CMO": ["cmo", "chief marketing officer"],
+            }
+
+            for idx, row in enumerate(rows):
+                cols = row.find_elements(By.TAG_NAME, "td")
+                if len(cols) >= 2:
+                    name_col = cols[0]
+                    title_col = cols[1]
+
+                    title_text = title_col.text.strip().lower()
+
+                    for role, patterns in priority_patterns.items():
+                        for pattern in patterns:
+                            if pattern in title_text:
+                                print(f"[DEBUG] Found {role} match: {title_text}")
+
+                                try:
+                                    profile_link_elem = name_col.find_element(By.XPATH, ".//a[contains(@href, '/employee/')]")
+                                    href = profile_link_elem.get_attribute("href")
+                                    name = profile_link_elem.text.strip()
+
+                                    if not href:
+                                        print(f"[DEBUG] No href found for {name}, skipping...")
+                                        continue
+
+                                    # If the href is relative, fix it
+                                    if href.startswith("/employee/"):
+                                        profile_url = "https://growjo.com" + href
+                                    else:
+                                        profile_url = href
+
+                                    return {
+                                        "name": name,
+                                        "title": title_col.text.strip(),
+                                        "profile_url": profile_url
+                                    }
+                                except Exception as e:
+                                    print(f"[ERROR] Could not extract profile URL: {str(e)}")
+                                    return None
+            print("[DEBUG] No matching decision maker found.")
+            return None
+
+        except Exception as e:
+            print(f"[ERROR] Error finding decision maker: {str(e)}")
+            return None
+
+
+
+    def scrape_decision_maker_details(self, profile_url):
+        try:
+            print(f"[DEBUG] Navigating to decision maker profile: {profile_url}")
+            self.driver.get(profile_url)
             time.sleep(3)
-            
-            # Get decision makers
-            decision_makers = self.get_decision_makers()
-            
-            # Add company name to each decision maker
-            for dm in decision_makers:
-                dm["company"] = company_name
-                
-            return decision_makers
-        
-        return []
-    
-    def close(self):
-        """Close the browser."""
-        if hasattr(self, 'driver'):
-            self.driver.quit()
+
+            # Click reveal buttons
+            reveal_buttons = self.driver.find_elements(By.XPATH, "//button[contains(text(), 'Reveal')] | //a[contains(text(), 'Reveal')]")
+            for btn in reveal_buttons:
+                try:
+                    self.driver.execute_script("arguments[0].click();", btn)
+                    print(f"[DEBUG] Clicked a reveal button.")
+                    time.sleep(2)
+                except Exception as e:
+                    print(f"[ERROR] Error clicking reveal button: {str(e)}")
+
+            # Now start scraping Email and Phone
+            email = None
+            phone = None
+
+            try:
+                # Find all <a href="/join"> elements after reveal
+                join_links = self.driver.find_elements(By.XPATH, "//a[contains(@href, '/join')]")
+                print(f"[DEBUG] Found {len(join_links)} elements with href='/join'")
+
+                for elem in join_links:
+                    text = elem.text.strip()
+                    print(f"[DEBUG] join_link text: '{text}'")
+
+                    if '@' in text and '.' in text and not email:
+                        email = text
+                    elif text.isdigit() and len(text) >= 8 and not phone:
+                        phone = text
+
+                if not email:
+                    print("[DEBUG] Email not found after reveal.")
+                if not phone:
+                    print("[DEBUG] Phone number not found after reveal.")
+
+            except Exception as e:
+                print(f"[ERROR] Error extracting email/phone: {str(e)}")
+
+            # Scrape LinkedIn link separately
+            linkedin_url = None
+            try:
+                linkedin_links = self.driver.find_elements(By.XPATH, "//a[contains(@href, 'linkedin.com')]")
+                if linkedin_links:
+                    linkedin_url = linkedin_links[0].get_attribute("href")
+            except Exception as e:
+                print(f"[ERROR] Error extracting LinkedIn URL: {str(e)}")
+
+            return {
+                "email": email or "not found",
+                "phone": phone or "not found",
+                "linkedin": linkedin_url or "not found",
+            }
+
+        except Exception as e:
+            print(f"[ERROR] Error scraping decision maker details: {str(e)}")
+            return {
+                "email": "not found",
+                "phone": "not found",
+                "linkedin": "not found",
+            }
 
 
-def main():
-    """Main function to run the scraper."""
-    parser = argparse.ArgumentParser(description="Scrape decision makers from Growjo.com")
-    parser.add_argument("--input", "-i", required=True, help="Input CSV file with company names")
-    parser.add_argument("--output", "-o", required=True, help="Output CSV file for results")
-    parser.add_argument("--headless", action="store_true", help="Run in headless mode")
-    args = parser.parse_args()
-    
-    # Read input CSV
-    try:
-        companies_df = pd.read_csv(args.input)
-        if "company" not in companies_df.columns:
-            raise ValueError("Input CSV must contain a 'company' column")
-    except Exception as e:
-        print(f"Error reading input file: {str(e)}")
-        return
-    
-    # Initialize scraper
-    scraper = GrowjoScraper(headless=args.headless)
-    
-    try:
-        # List to store all decision makers
-        all_decision_makers = []
-        
-        # Process each company
-        for company in tqdm(companies_df["company"], desc="Scraping companies"):
-            decision_makers = scraper.scrape_company(company)
-            
-            # If no decision makers found, add a placeholder entry with "not found" in each column
-            if not decision_makers:
-                print(f"No decision makers found for {company}. Adding 'not found' placeholder.")
-                all_decision_makers.append({
-                    "name": "not found",
-                    "title": "not found",
-                    "contact_info": "not found",
-                    "linkedin": "not found",
-                    "company": company
+
+    def scrape_company(self, company_name):
+        """
+        Full flow: login if needed, search company, scrape company details,
+        find decision maker, scrape decision maker details, and return all combined info.
+        """
+        try:
+            if not self.logged_in:
+                self.login()
+
+            success = self.search_company(company_name)
+            if not success:
+                print(f"[ERROR] Could not find company page for '{company_name}'")
+                return self._build_default_result(company_name)
+
+            # Extract company details
+            company_info = self.extract_company_details(company_name)
+
+            result = {
+                "company_name": company_info.get("company", company_name),
+                "company_website": company_info.get("website", "not found"),
+                "revenue": company_info.get("revenue", "not found"),
+                "location": ", ".join(filter(None, [company_info.get('city', ''), company_info.get('state', '')])) or "not found",
+                "industry": company_info.get("industry", "not found"),
+                "interests": company_info.get("specialties", "not found"),
+                "employee_count": company_info.get("employees", "not found"),
+            }
+
+            # Find and scrape decision maker
+            decider = self.find_decision_maker()
+            if decider and decider.get("profile_url"):
+                decider_details = self.scrape_decision_maker_details(decider["profile_url"])
+                result.update({
+                    "decider_name": decider.get("name", "not found"),
+                    "decider_title": decider.get("title", "not found"),
+                    "decider_email": decider_details.get("email", "not found"),
+                    "decider_phone": decider_details.get("phone", "not found"),
+                    "decider_linkedin": decider_details.get("linkedin", "not found"),
                 })
             else:
-                all_decision_makers.extend(decision_makers)
-            
-            # Save progress after each company
-            pd.DataFrame(all_decision_makers).to_csv(args.output, index=False)
-            
-            # Small delay between companies to avoid excessive requests
-            time.sleep(2)
-        
-        print(f"Scraping complete! Found {len(all_decision_makers)} decision makers across {len(companies_df)} companies.")
-        print(f"Results saved to {args.output}")
-        
-    except KeyboardInterrupt:
-        print("Scraping interrupted by user.")
-    except Exception as e:
-        print(f"Error during scraping: {str(e)}")
-    finally:
-        scraper.close()
+                # If no decider found
+                result.update({
+                    "decider_name": "not found",
+                    "decider_title": "not found",
+                    "decider_email": "not found",
+                    "decider_phone": "not found",
+                    "decider_linkedin": "not found",
+                })
 
+            return result
 
-if __name__ == "__main__":
-    main() 
+        except Exception as e:
+            print(f"[ERROR] Unexpected error in scrape_company for '{company_name}': {str(e)}")
+            return self._build_default_result(company_name)
+
+    def _build_default_result(self, company_name):
+        """
+        Helper to return default empty result if something fails.
+        """
+        return {
+            "company_name": company_name,
+            "company_website": "not found",
+            "revenue": "not found",
+            "location": "not found",
+            "industry": "not found",
+            "interests": "not found",
+            "employee_count": "not found",
+            "decider_name": "not found",
+            "decider_title": "not found",
+            "decider_email": "not found",
+            "decider_phone": "not found",
+            "decider_linkedin": "not found"
+        }
+
+    def close(self):
+        """Safely close the browser driver."""
+        try:
+            if hasattr(self, 'driver') and self.driver:
+                self.driver.quit()
+        except Exception as e:
+            print(f"[ERROR] Error during browser closing: {str(e)}")

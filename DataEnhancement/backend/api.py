@@ -1,18 +1,13 @@
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 import os, time
-import pandas as pd
+# import pandas as pd
 import asyncio
 import uuid
 import logging
-from scraper.revenueScraper import get_company_revenue_from_growjo
-from scraper.websiteNameScraper import find_company_website
 from scraper.apollo_scraper import enrich_single_company
 from selenium.webdriver.common.by import By
 import shutil
-
-# from scraper.linkedinScraper.main import run_batch
-# from scraper.linkedinScraper.utils.chromeUtils import CHROME_INFO_FILE
 from scraper.growjoScraper import GrowjoScraper
 from security import generate_token, token_required, VALID_USERS
 
@@ -86,24 +81,28 @@ def apollo_scrape_batch():
 
     return jsonify(results)
 
-
-@app.route("/api/growjo", methods=["POST"])
-def scrape():
+@app.route("/api/scrape-growjo", methods=["POST"])
+def scrape_growjo():
     data = request.get_json()
+    
     if not data or "company" not in data:
         return jsonify({"error": "Missing 'company' in request JSON"}), 400
 
     company = data["company"]
-    headless = data.get("headless", True)
+    headless = data.get("headless", False)  # default: headless browser = False
 
     scraper = GrowjoScraper(headless=headless)
     try:
         results = scraper.scrape_company(company)
-        return jsonify(results)
+        return jsonify(results), 200
     except Exception as e:
+        print(f"[ERROR] API scraping error: {str(e)}")
         return jsonify({"error": str(e)}), 500
     finally:
-        scraper.close()
+        try:
+            scraper.close()
+        except Exception as e:
+            print(f"[ERROR] Failed closing browser: {str(e)}")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))  # Render will provide the port
