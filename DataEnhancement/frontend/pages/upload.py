@@ -52,6 +52,12 @@ def split_name(full_name):
     else:
         return parts[0], " ".join(parts[1:])
 
+def normalize_website(website):
+    if pd.isna(website) or not isinstance(website, str):
+        return ""
+    return website.replace("http://", "").replace("https://", "").replace("www.", "").strip().lower()
+
+
 st.set_page_config(page_title="📤 Upload CSV & Normalize", layout="wide")
 st.title("📤 Upload & Normalize Lead Data")
 st.markdown("""
@@ -176,9 +182,9 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
 
 
         for i, (idx, row) in enumerate(rows_to_update.iterrows()):
-            domain_appolo = row["Website"].replace("http://", "").replace("https://", "").replace("www.", "").strip().lower()
+            domain_apollo = normalize_website(row.get("Website"))
             domain = row["Company"]
-            apollo = apollo_lookup.get(domain_appolo, {})
+            apollo = apollo_lookup.get(domain_apollo, {})
             growjo = growjo_results.get(domain.lower(), {})
 
 
@@ -193,7 +199,7 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
 
             if not row["Year Founded"].strip():
                 rows_to_update.at[idx, "Year Founded"] = apollo.get("founded_year", "")
-            if not row["Website"].strip():
+            if not normalize_website(row.get("Website")):
                 rows_to_update.at[idx, "Website"] = apollo.get("website_url", "")
             if not row["LinkedIn URL"].strip():
                 rows_to_update.at[idx, "LinkedIn URL"] = apollo.get("linkedin_url", "") 
