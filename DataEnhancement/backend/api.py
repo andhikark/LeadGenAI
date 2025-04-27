@@ -97,11 +97,11 @@ def get_apollo_info_batch():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-class DummyTQDM:
-    def update(self, _):
-        pass
+# class DummyTQDM:
+#     def update(self, _):
+#         pass
 
-import shutil
+# import shutil
 
 # @app.route("/api/linkedin-info-batch", methods=["POST"])
 # def get_linkedin_info_batch():
@@ -153,29 +153,39 @@ def scrape_growjo_batch():
     try:
         data_list = request.get_json()
         if not isinstance(data_list, list):
-            return jsonify({"error": "Expected a list of objects"}), 400
+            return jsonify({"error": "Expected a list of objects (array of JSON)"}), 400
 
-        headless = False  # default headless for batch
+        headless = False  # default headless mode for batch
         scraper = GrowjoScraper(headless=headless)
 
         results = []
-        for entry in data_list:
-            company = entry.get("company")
+        for idx, entry in enumerate(data_list, start=1):
+            company_name = entry.get("company") or entry.get("name")
 
-            if not company:
-                results.append({"error": "Missing required field: company"})
+            if not company_name:
+                error_msg = f"Missing 'company' or 'name' field at item {idx}"
+                print(f"[ERROR] {error_msg}")
+                results.append({"error": error_msg})
                 continue
 
-            result = scraper.scrape_company(company)
-            result["company"] = company  # ensure company name in result
-            results.append(result)
+            try:
+                print(f"[INFO] Scraping company: {company_name}")
+                result = scraper.scrape_company(company_name)
+                result["input_name"] = company_name  # track the original input
+                results.append(result)
+            except Exception as scrape_error:
+                error_msg = f"Scraping failed for '{company_name}': {str(scrape_error)}"
+                print(f"[ERROR] {error_msg}")
+                results.append({"error": error_msg})
 
         scraper.close()
 
         return jsonify(results), 200
 
     except Exception as e:
+        print(f"[FATAL ERROR] {str(e)}")
         return jsonify({"error": str(e)}), 500
+
     
 
 if __name__ == "__main__":
