@@ -131,7 +131,6 @@ class GrowjoScraper:
             raise
 
     def search_company(self, company_name):
-<<<<<<< HEAD
         """
         Search for a company on Growjo and click its link if found.
         If not found, progressively trim words and retry using direct ?query= URL search,
@@ -191,73 +190,6 @@ class GrowjoScraper:
         except Exception as e:
             print(f"[ERROR] Unexpected error in search_company: {str(e)}")
             return False
-=======
-            """
-            Search for a company on Growjo and click its link if found.
-            If not found, return False safely.
-            """
-            try:
-                print(f"\n[DEBUG] Searching for company: '{company_name}'")
-                self.driver.get(GROWJO_SEARCH_URL)
-                time.sleep(2)
-
-                # Try to locate search box
-                search_box = None
-                search_methods = [
-                    (By.XPATH, "//input[contains(@placeholder, 'Search')]"),
-                    (By.XPATH, "//input[@type='search']"),
-                    (By.CSS_SELECTOR, "input.search-input, input.form-control, input.search")
-                ]
-                for by, selector in search_methods:
-                    try:
-                        search_box = self.wait.until(EC.presence_of_element_located((by, selector)))
-                        break
-                    except TimeoutException:
-                        continue
-
-                if not search_box:
-                    print("[ERROR] Search box not found.")
-                    return False
-
-                # Input company name
-                search_box.clear()
-                search_box.send_keys(company_name)
-                search_box.send_keys(Keys.RETURN)
-                time.sleep(3)
-
-                # Try finding the correct company link
-                try:
-                    company_link = self.wait.until(EC.presence_of_element_located(
-                        (By.XPATH, f"//a[starts-with(@href, '/company/') and contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{company_name.lower()}')]")
-                    ))
-                except TimeoutException:
-                    print(f"[DEBUG] No exact or partial match for '{company_name}'.")
-                    return False
-
-                if company_link:
-                    link_text = company_link.text.strip()
-                    print(f"[DEBUG] Clicking company link: '{link_text}'")
-                    company_link.click()
-                    time.sleep(3)
-
-                    # After click, sanity check
-                    current_url = self.driver.current_url
-                    if "/company/" not in current_url:
-                        print(f"[ERROR] After click, not redirected to company page. Current URL: {current_url}")
-                        return False
-
-                    return True
-                else:
-                    print(f"[DEBUG] Company '{company_name}' not found.")
-                    return False
-
-            except Exception as e:
-                print(f"[ERROR] Error searching for company '{company_name}': {str(e)}")
-                return False
->>>>>>> d9a1c3b6c5b6a3c4ffd3b7c6ee988025a36c934e
-
-
-
 
 
         
@@ -395,8 +327,6 @@ class GrowjoScraper:
         except Exception as e:
             print(f"[ERROR] Error finding decision maker: {str(e)}")
             return None
-
-
 
 
     def scrape_decision_maker_details(self, profile_url):
