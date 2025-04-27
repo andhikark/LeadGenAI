@@ -149,11 +149,10 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
         status_text = st.empty()
 
         base_df = st.session_state.normalized_df.copy()
-        confirmed_df = st.session_state.confirmed_selection_df.copy()
         enhanced_df = base_df.copy()
 
-        mask = base_df["Company"].isin(confirmed_df["Company"])
-        rows_to_update = enhanced_df[mask].copy()
+        mask = base_df["Company"].notnull()
+        rows_to_update = base_df[mask].copy()
 
         apollo_domains = rows_to_update["Website"].dropna().unique().tolist()
         apollo_domains = [w.replace("http://", "").replace("https://", "").replace("www.", "").strip().lower() for w in apollo_domains]
