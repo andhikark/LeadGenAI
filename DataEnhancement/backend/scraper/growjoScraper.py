@@ -1,5 +1,6 @@
 import os
 import time
+import difflib
 from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.webdriver.edge.options import Options
@@ -131,68 +132,98 @@ class GrowjoScraper:
             raise
 
     def search_company(self, company_name):
-            """
-            Search for a company on Growjo and click its link if found.
-            If not found, return False safely.
-            """
-            try:
-                print(f"\n[DEBUG] Searching for company: '{company_name}'")
-                self.driver.get(GROWJO_SEARCH_URL)
+        """
+        Search for a company on Growjo and click its link if matched.
+        Use similarity score between intended and found company name.
+        """
+        try:
+            print(f"\n[DEBUG] Searching for company: '{company_name}'")
+
+            intended = company_name.strip().lower()
+            words = intended.split()
+
+            while words:
+                query = " ".join(words)
+                print(f"[DEBUG] Trying search with query: '{query}'")
+
+                search_url = f"https://growjo.com/?query={'%20'.join(query.split())}"
+                self.driver.get(search_url)
                 time.sleep(2)
 
-                # Try to locate search box
-                search_box = None
-                search_methods = [
-                    (By.XPATH, "//input[contains(@placeholder, 'Search')]"),
-                    (By.XPATH, "//input[@type='search']"),
-                    (By.CSS_SELECTOR, "input.search-input, input.form-control, input.search")
-                ]
-                for by, selector in search_methods:
-                    try:
-                        search_box = self.wait.until(EC.presence_of_element_located((by, selector)))
-                        break
-                    except TimeoutException:
-                        continue
-
-                if not search_box:
-                    print("[ERROR] Search box not found.")
-                    return False
-
-                # Input company name
-                search_box.clear()
-                search_box.send_keys(company_name)
-                search_box.send_keys(Keys.RETURN)
-                time.sleep(3)
-
-                # Try finding the correct company link
                 try:
-                    company_link = self.wait.until(EC.presence_of_element_located(
-                        (By.XPATH, f"//a[starts-with(@href, '/company/') and contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{company_name.lower()}')]")
+                    print("[DEBUG] Waiting for at least one company row to load...")
+                    self.wait.until(EC.presence_of_element_located(
+                        (By.XPATH, "//table//tbody//tr")
                     ))
+                    print("[DEBUG] Company table and rows loaded ✅")
                 except TimeoutException:
-                    print(f"[DEBUG] No exact or partial match for '{company_name}'.")
-                    return False
-
-                if company_link:
-                    link_text = company_link.text.strip()
-                    print(f"[DEBUG] Clicking company link: '{link_text}'")
-                    company_link.click()
-                    time.sleep(3)
-
-                    # After click, sanity check
-                    current_url = self.driver.current_url
-                    if "/company/" not in current_url:
-                        print(f"[ERROR] After click, not redirected to company page. Current URL: {current_url}")
+                    print(f"[DEBUG] Company table not loaded for '{query}'.")
+                    if len(words) <= 1:
+                        print(f"[ERROR] Search failed even for single word '{query}'. Stopping.")
                         return False
+                    words.pop()
+                    continue
 
-                    return True
+                company_links = self.driver.find_elements(
+                    By.XPATH, "//table//tbody//a[starts-with(@href, '/company/')]"
+                )
+
+                if company_links:
+                    link = company_links[0]
+                    href = link.get_attribute("href")
+                    if href and "/company/" in href:
+                        href_company_part = href.split("/company/")[1]
+                        link_full_text = href_company_part.replace("_", " ").lower()
+                    else:
+                        link_full_text = link.text.strip().lower()
+
+                    print(f"[DEBUG] First result (reconstructed): '{link_full_text}'")
+
+                    similarity = self._calculate_similarity(intended, link_full_text)
+                    print(f"[DEBUG] Similarity score: {similarity:.2f}")
+
+                    if similarity >= 0.65:  # ✅ Accept only if good similarity
+                        print(f"[DEBUG] Found good match: '{link_full_text}', clicking...")
+                        self.driver.execute_script("arguments[0].click();", link)
+                        time.sleep(2)
+
+                        if "/company/" in self.driver.current_url:
+                            print(f"[DEBUG] Landed on company page: {self.driver.current_url}")
+                            return True
+                        else:
+                            print(f"[ERROR] After click, not redirected properly.")
+                            return False
+                    else:
+                        print(f"[DEBUG] Similarity too low for '{link_full_text}'. Trimming...")
+
                 else:
-                    print(f"[DEBUG] Company '{company_name}' not found.")
-                    return False
+                    print(f"[DEBUG] No company links found for '{query}'.")
 
-            except Exception as e:
-                print(f"[ERROR] Error searching for company '{company_name}': {str(e)}")
-                return False
+                if len(words) <= 1:
+                    print(f"[ERROR] No good match after all trims for '{company_name}'.")
+                    return False
+                words.pop()
+
+            print(f"[ERROR] Company '{company_name}' not found after all attempts.")
+            return False
+
+        except Exception as e:
+            print(f"[ERROR] Unexpected error in search_company: {str(e)}")
+            return False
+
+
+    def _calculate_similarity(self, a: str, b: str) -> float:
+        """
+        Helper to calculate similarity between two strings using difflib.
+        Returns a float between 0 and 1.
+        """
+        a_clean = a.replace(",", "").replace(".", "").lower()
+        b_clean = b.replace(",", "").replace(".", "").lower()
+        return difflib.SequenceMatcher(None, a_clean, b_clean).ratio()
+
+
+
+
 
         
     def extract_company_details(self, company_name):
@@ -251,71 +282,108 @@ class GrowjoScraper:
         try:
             print("[DEBUG] Looking for decision makers...")
 
+            # 🛠️ Step 1: Scroll to bottom to trigger full people loading
+            print("[DEBUG] Scrolling to trigger lazy loading of all employees...")
+            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(2)
+
+            # 🛠️ Step 2: Wait until at least 5 rows are loaded
             try:
-                people_table = self.wait.until(EC.presence_of_element_located((
-                    By.XPATH, "//h2[contains(., 'People')]/following::table[1]"
-                )))
+                self.wait.until(
+                    EC.presence_of_element_located(
+                        (By.XPATH, "//h2[contains(., 'People')]/following::table//tbody/tr[5]")
+                    )
+                )
+                print("[DEBUG] People table and at least 5 rows loaded ✅")
             except TimeoutException:
-                print("[DEBUG] People table not found.")
+                print("[ERROR] People table or enough rows not loaded after scrolling.")
                 return None
 
-            rows = people_table.find_elements(By.TAG_NAME, "tr")[1:]  # Skip header row
-
+            # 🛠️ Step 3: Locate and parse people
+            people_table = self.driver.find_element(
+                By.XPATH, "//h2[contains(., 'People')]/following::table[1]"
+            )
+            rows = people_table.find_elements(By.TAG_NAME, "tr")[1:]  # Skip header
             print(f"[DEBUG] Found {len(rows)} people listed.")
 
-            priority_patterns = {
-                "President": ["president"],
-                "Owner": ["owner"],
-                "Founder": ["founder", "co-founder", "cofounder", "founding partner"],
-                "Director": ["director", "managing director", "executive director"],
-                "CEO": ["ceo", "chief executive officer"],
-                "CTO": ["cto", "chief technology officer"],
-                "CFO": ["cfo", "chief financial officer"],
-                "CMO": ["cmo", "chief marketing officer"],
-            }
+            candidates = []
+
+            def assign_priority(title):
+                """Assign decision maker priority based on strict title rules."""
+                title = title.lower().replace("&", "and").replace("/", " ")
+                words = title.split()
+                if not words:
+                    return 999
+                first_word = words[0]
+                if first_word in ["owner", "founder", "president", "director", "founding"]:
+                    return 1
+                elif first_word in ["co-founder", "cofounder"]:
+                    return 2
+                elif first_word == "ceo":
+                    return 3
+                elif first_word == "chief" and len(words) > 1:
+                    second_word = words[1]
+                    if second_word in [
+                        "executive", "product", "marketing", "financial", "sales",
+                        "growth", "operating", "audit", "compliance", "information"
+                    ]:
+                        return 3
+                return 999
 
             for idx, row in enumerate(rows):
                 cols = row.find_elements(By.TAG_NAME, "td")
-                if len(cols) >= 2:
-                    name_col = cols[0]
-                    title_col = cols[1]
+                if len(cols) < 2:
+                    continue
 
-                    title_text = title_col.text.strip().lower()
+                name_col = cols[0]
+                title_col = cols[1]
 
-                    for role, patterns in priority_patterns.items():
-                        for pattern in patterns:
-                            if pattern in title_text:
-                                print(f"[DEBUG] Found {role} match: {title_text}")
+                try:
+                    profile_link_elem = name_col.find_element(By.XPATH, ".//a[contains(@href, '/employee/')]")
+                    href = profile_link_elem.get_attribute("href")
+                    name = profile_link_elem.text.strip()
+                    raw_title = title_col.text.strip()
 
-                                try:
-                                    profile_link_elem = name_col.find_element(By.XPATH, ".//a[contains(@href, '/employee/')]")
-                                    href = profile_link_elem.get_attribute("href")
-                                    name = profile_link_elem.text.strip()
+                    if not href or not name:
+                        continue
 
-                                    if not href:
-                                        print(f"[DEBUG] No href found for {name}, skipping...")
-                                        continue
+                    profile_url = "https://growjo.com" + href if href.startswith("/employee/") else href
+                    priority = assign_priority(raw_title)
 
-                                    # If the href is relative, fix it
-                                    if href.startswith("/employee/"):
-                                        profile_url = "https://growjo.com" + href
-                                    else:
-                                        profile_url = href
+                    candidates.append({
+                        "name": name,
+                        "title": raw_title,
+                        "profile_url": profile_url,
+                        "priority": priority
+                    })
 
-                                    return {
-                                        "name": name,
-                                        "title": title_col.text.strip(),
-                                        "profile_url": profile_url
-                                    }
-                                except Exception as e:
-                                    print(f"[ERROR] Could not extract profile URL: {str(e)}")
-                                    return None
-            print("[DEBUG] No matching decision maker found.")
+                    print(f"[DEBUG] Candidate: {name} - {raw_title} (Priority: {priority})")
+
+                except Exception as e:
+                    print(f"[ERROR] Could not extract person info: {str(e)}")
+                    continue
+
+            # 🛠️ Step 4: Pick best candidate
+            if candidates:
+                candidates.sort(key=lambda x: x["priority"])
+                best_candidate = candidates[0]
+
+                print(f"[DEBUG] Best candidate found: {best_candidate['name']} - {best_candidate['title']} (Priority: {best_candidate['priority']})")
+
+                return {
+                    "name": best_candidate["name"],
+                    "title": best_candidate["title"],
+                    "profile_url": best_candidate["profile_url"]
+                }
+
+            print("[DEBUG] No decision makers found.")
             return None
 
         except Exception as e:
             print(f"[ERROR] Error finding decision maker: {str(e)}")
             return None
+
+
 
 
 
