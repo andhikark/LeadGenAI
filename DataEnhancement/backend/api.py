@@ -5,17 +5,9 @@ import os, time
 import asyncio
 import uuid
 import logging
-# from scraper.revenueScraper import get_company_revenue_from_growjo
-# from scraper.websiteNameScraper import find_company_website
 from scraper.apollo_scraper import enrich_single_company
-# from scraper.linkedinScraper.scraping.scraper import scrape_linkedin
-# from scraper.linkedinScraper.scraping.login import login_to_linkedin
-# from scraper.linkedinScraper.utils.chromeUtils import get_chrome_driver
-# from selenium.webdriver.common.by import By
-# import shutil
-
-# from scraper.linkedinScraper.main import run_batch
-# from scraper.linkedinScraper.utils.chromeUtils import CHROME_INFO_FILE
+from selenium.webdriver.common.by import By
+import shutil
 from scraper.growjoScraper import GrowjoScraper
 from security import generate_token, token_required, VALID_USERS
 
@@ -73,30 +65,52 @@ def get_revenue():
     data = get_company_revenue_from_growjo(company)
     return jsonify(data)
 
-@app.route("/api/apollo-info", methods=["POST"])
-def get_apollo_info_batch():
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "Missing request body"}), 400
+@app.route("/api/apollo-scrape-batch", methods=["POST"])
+def apollo_scrape_batch():
+    data = request.get_json()
+    domains = data.get("domains")
 
-        if isinstance(data, dict):
-            data = [data]
+    if not domains or not isinstance(domains, list):
+        return jsonify({"error": "Missing or invalid 'domains' (must be a list)"}), 400
+
+    results = []
+    for domain in domains:
+        enriched_data = enrich_single_company(domain)
+        enriched_data["domain"] = domain  # always return domain
+        results.append(enriched_data)
+
+    return jsonify(results)
+
+@app.route("/api/scrape-growjo-batch", methods=["POST"])
+def scrape_growjo_batch():
+    try:
+        data_list = request.get_json()
+        if not isinstance(data_list, list):
+            return jsonify({"error": "Expected a list of objects"}), 400
+
+        headless = True  # default headless for batch
+        scraper = GrowjoScraper(headless=headless)
 
         results = []
-        for company in data:
-            domain = company.get("domain")
-            if domain:
-                enriched = enrich_single_company(domain)
-                results.append(enriched)
-            else:
-                results.append({"error": "Missing domain"})
+        for entry in data_list:
+            company = entry.get("company")
+
+            if not company:
+                results.append({"error": "Missing required field: company"})
+                continue
+
+            result = scraper.scrape_company(company)
+            result["company"] = company  # ensure company name in result
+            results.append(result)
+
+        scraper.close()
 
         return jsonify(results), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+<<<<<<< HEAD
 # class DummyTQDM:
 #     def update(self, _):
 #         pass
@@ -188,6 +202,8 @@ def scrape_growjo_batch():
 
     
 
+=======
+>>>>>>> d9a1c3b6c5b6a3c4ffd3b7c6ee988025a36c934e
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))  # Render will provide the port
     app.run(host="0.0.0.0", port=port, debug=True)

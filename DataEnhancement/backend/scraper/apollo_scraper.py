@@ -9,7 +9,7 @@ app = Flask(__name__)
 APOLLO_API_KEY = os.getenv("APOLLO_API_KEY")
 
 def enrich_single_company(domain):
-    """Call Apollo API and extract specific fields."""
+    """Call Apollo API and extract founded_year, linkedin_url, keywords, annual_revenue_printed, website_url, employee_count."""
     url = "https://api.apollo.io/api/v1/organizations/enrich"
     headers = {
         "accept": "application/json",
@@ -23,15 +23,23 @@ def enrich_single_company(domain):
         response = requests.get(url, headers=headers, params=params)
         if response.status_code == 200:
             org = response.json().get("organization", {})
+            founded_year = org.get("founded_year", "")
+            linkedin_url = org.get("linkedin_url", "")
+            keywords_list = org.get("keywords", [])
+            keywords_combined = ", ".join(keywords_list) if keywords_list else ""
+            annual_revenue_printed = org.get("annual_revenue_printed", "")
+            website_url = org.get("website_url", "")
+            employee_count = org.get("estimated_num_employees", "")
+
             return {
-                "domain": domain,
-                "name": org.get("name", ""),
-                "website_url": org.get("website_url", ""),
-                "linkedin_url": org.get("linkedin_url", ""),
-                "founded_year": org.get("founded_year", ""),
-                "annual_revenue_printed": org.get("annual_revenue_printed", "")
+                "founded_year": founded_year,
+                "linkedin_url": linkedin_url,
+                "keywords": keywords_combined,
+                "annual_revenue_printed": annual_revenue_printed,
+                "website_url": website_url,
+                "employee_count": employee_count
             }
         else:
-            return {"domain": domain, "error": f"Status {response.status_code}"}
+            return {"error": f"Status {response.status_code}"}
     except Exception as e:
-        return {"domain": domain, "error": str(e)}
+        return {"error": str(e)}
