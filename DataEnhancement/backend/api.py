@@ -10,6 +10,7 @@ from selenium.webdriver.common.by import By
 import shutil
 from scraper.growjoScraper import GrowjoScraper
 from security import generate_token, token_required, VALID_USERS
+from scraper.apollo_people import get_best_person  
 
 
 app = Flask(__name__)
@@ -85,31 +86,80 @@ def apollo_scrape_batch():
 def scrape_growjo_batch():
     try:
         data_list = request.get_json()
-        if not isinstance(data_list, list):
-            return jsonify({"error": "Expected a list of objects"}), 400
 
-        headless = True  # default headless for batch
-        scraper = GrowjoScraper(headless=headless)
+        # :rotating_light: Validate: must be a list
+        if not isinstance(data_list, list):
+            return jsonify({"error": "Expected a JSON array (list of companies)"}), 400
+
+        # :rocket: Initialize scraper (always headless=False for now, you can change later)
+        scraper = GrowjoScraper(headless=True)
 
         results = []
-        for entry in data_list:
-            company = entry.get("company")
+        for idx, entry in enumerate(data_list, start=1):
+            company_name = entry.get("company") or entry.get("name")
 
-            if not company:
-                results.append({"error": "Missing required field: company"})
+            if not company_name:
+                error_msg = f"Missing 'company' or 'name' field at item {idx}"
+                print(f"[ERROR] {error_msg}")
+                results.append({
+                    "error": error_msg,
+                    "input_name": None
+                })
                 continue
 
-            result = scraper.scrape_company(company)
-            result["company"] = company  # ensure company name in result
-            results.append(result)
+            try:
+                print(f"[INFO] Scraping company: {company_name}")
+                result = scraper.scrape_full_pipeline(company_name)
+
+                if not result:
+                    result = {
+                        "error": f"Scraping returned no data for '{company_name}'",
+                        "company_name": company_name
+                    }
+
+                result["input_name"] = company_name
+                results.append(result)
+
+            except Exception as scrape_error:
+                error_msg = f"Scraping failed for '{company_name}': {str(scrape_error)}"
+                print(f"[ERROR] {error_msg}")
+                results.append({
+                    "error": error_msg,
+                    "input_name": company_name
+                })
 
         scraper.close()
+        return jsonify(results), 200
+
+    except Exception as e:
+        print(f"[FATAL ERROR] {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/apollo-best-person-batch", methods=["POST"])
+def apollo_best_person_batch_api():
+    try:
+        data = request.get_json()
+        domains = data.get("domains")
+
+        if not domains or not isinstance(domains, list):
+            return jsonify({"error": "Missing or invalid field: domains (must be a list)"}), 400
+
+        results = []
+
+        for domain in domains:
+            try:
+                best_person = get_best_person(domain)
+                if best_person:
+                    results.append(best_person)
+                else:
+                    results.append({"domain": domain, "message": "No suitable person found"})
+            except Exception as e:
+                results.append({"domain": domain, "error": str(e)})
 
         return jsonify(results), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))  # Render will provide the port
     app.run(host="0.0.0.0", port=port, debug=True)

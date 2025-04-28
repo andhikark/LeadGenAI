@@ -1,1 +1,1 @@
-BACKEND_URL = "http://145.223.21.90:5050"
+BACKEND_URL = "http://127.0.0.1:5050"

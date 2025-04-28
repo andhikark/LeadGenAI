@@ -8,130 +8,79 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.chrome.service import Service
+from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.edge.options import Options as EdgeOptions
+from selenium.webdriver.edge.service import Service as EdgeService
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
-# Load environment variables
 load_dotenv()
 
-# Constants
 GROWJO_LOGIN_URL = "https://growjo.com/login"
 GROWJO_SEARCH_URL = "https://growjo.com/"
 LOGIN_EMAIL = os.getenv("GROWJO_EMAIL")
 LOGIN_PASSWORD = os.getenv("GROWJO_PASSWORD")
 
-# For debugging
-print(f"Email: {LOGIN_EMAIL}")
-print(f"Password: {LOGIN_PASSWORD[:3]}***** (first 3 chars shown for verification)")
-
 class GrowjoScraper:
-    """A class to scrape decision makers' information from Growjo.com."""
-    
     def __init__(self, headless=False):
-        """Initialize the scraper with browser settings."""
-        self.setup_browser(headless)
-        self.wait = WebDriverWait(self.driver, 10)  # Increased timeout to 10 seconds
+        self.headless = headless
+        self.driver_public = None  # Public browser (no login)
+        self.driver_logged_in = None  # Private browser (with login)
+        self.wait1 = None
+        self.wait2 = None
         self.logged_in = False
-        
-    def setup_browser(self, headless):
-        """Set up the Edge browser with appropriate options."""
-        edge_options = Options()
-        if headless:
-            edge_options.add_argument("--headless")
-        
-        # Add additional options to make Edge more stable
-        edge_options.add_argument("--no-sandbox")
-        edge_options.add_argument("--disable-dev-shm-usage")
-        edge_options.add_argument("--disable-gpu")
-        edge_options.add_argument("--window-size=1920,1080")
-            
-        # Using Edge WebDriver which is built into Windows 10
-        self.driver = webdriver.Edge(options=edge_options)
-        self.driver.maximize_window()
-    
-    def login(self):
-        """Log in to Growjo.com with credentials from environment variables."""
-        if not LOGIN_EMAIL or not LOGIN_PASSWORD:
-            raise ValueError("Login credentials not found. Make sure your .env file contains GROWJO_EMAIL and GROWJO_PASSWORD.")
-        
+
+        self._setup_browsers()
+
+    def _setup_browsers(self):
+        """Initialize two Edge browser instances faster."""
+        options = EdgeOptions()
+        if self.headless:
+            options.add_argument("--headless")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--window-size=1920,1080")
+
+        # 🚀 Install only once
+        driver_path = EdgeChromiumDriverManager().install()
+        service = EdgeService(driver_path)
+
+        # 🚀 Launch browsers
+        self.driver_public = webdriver.Edge(service=service, options=options)
+        self.driver_public.maximize_window()
+
+        self.driver_logged_in = webdriver.Edge(service=service, options=options)
+        self.driver_logged_in.maximize_window()
+
+        self.wait_public = WebDriverWait(self.driver_public, 10)
+        self.wait_logged_in = WebDriverWait(self.driver_logged_in, 10)
+
+
+    def login_logged_in_browser(self):
+        """Login into Growjo on the logged-in driver."""
+        print("[DEBUG] Logging into Growjo (logged-in driver)...")
+        self.driver_logged_in.get(GROWJO_LOGIN_URL)
+        time.sleep(3)
         try:
-            print("Logging in to Growjo.com...")
-            self.driver.get(GROWJO_LOGIN_URL)
-            
-            # Wait for page to load completely
-            time.sleep(5)
-                
-            print("Page title:", self.driver.title)
-            print("Current URL:", self.driver.current_url)
-            
-            # Using exact selectors from the login page
-            form = self.wait.until(EC.presence_of_element_located((By.TAG_NAME, "form")))
-            email_field = self.wait.until(EC.element_to_be_clickable((By.ID, "email")))
-            password_field = self.wait.until(EC.element_to_be_clickable((By.ID, "password")))
-            
-            # Clear and enter email
+            email_field = self.driver_logged_in.find_element(By.ID, "email")
+            password_field = self.driver_logged_in.find_element(By.ID, "password")
             email_field.clear()
             email_field.send_keys(LOGIN_EMAIL)
-            
-            # Clear and enter password
             password_field.clear()
             password_field.send_keys(LOGIN_PASSWORD)
-            
-            # Submit the form instead of clicking the button
-            print("Submitting login form...")
+            form = self.driver_logged_in.find_element(By.TAG_NAME, "form")
             form.submit()
-            
-            # Wait for login success
             time.sleep(5)
-            
-            # Check if we're redirected away from login page
-            if "/login" not in self.driver.current_url:
+            if "/login" not in self.driver_logged_in.current_url:
+                print("[DEBUG] Login successful.")
                 self.logged_in = True
-                print("Login successful!")
             else:
-                print("Still on login page after submitting form")
-                # Try clicking the button as a fallback
-                try:
-                    login_button = self.driver.find_element(By.XPATH, "//button[contains(text(), 'Sign In')]")
-                    print("Clicking login button as fallback...")
-                    login_button.click()
-                    time.sleep(5)
-                    
-                    if "/login" not in self.driver.current_url:
-                        self.logged_in = True
-                        print("Login successful via button click!")
-                    else:
-                        # Check for error messages
-                        error_elements = self.driver.find_elements(By.CSS_SELECTOR, ".error, .alert, .notification")
-                        for error in error_elements:
-                            print(f"Error message found: {error.text}")
-                        raise Exception("Login failed: still on login page after form submit and button click")
-                except Exception as e:
-                    print(f"Button click fallback failed: {str(e)}")
-                    raise
-            
+                raise Exception("Login failed.")
         except Exception as e:
-            print(f"Login failed with exception: {str(e)}")
-            # DEBUG: Capturing screenshot of failed login attempt to visually inspect the page state
-            
-            # Try direct navigation as a last resort
-            try:
-                print("Attempting direct navigation to main page...")
-                self.driver.get(GROWJO_SEARCH_URL)
-                time.sleep(3)
-                
-                # Check if we're on the main page and not redirected back to login
-                if "/login" not in self.driver.current_url:
-                    print("Direct navigation successful!")
-                    self.logged_in = True
-                    return
-            except:
-                pass
-            
+            print(f"[ERROR] Login error: {e}")
             raise
 
-    def search_company(self, company_name):
+    def search_company(self, driver, wait, company_name):
         """
         Search for a company on Growjo and click its link if matched.
         Use similarity score between intended and found company name.
@@ -147,12 +96,12 @@ class GrowjoScraper:
                 print(f"[DEBUG] Trying search with query: '{query}'")
 
                 search_url = f"https://growjo.com/?query={'%20'.join(query.split())}"
-                self.driver.get(search_url)
+                driver.get(search_url)
                 time.sleep(2)
 
                 try:
                     print("[DEBUG] Waiting for at least one company row to load...")
-                    self.wait.until(EC.presence_of_element_located(
+                    wait.until(EC.presence_of_element_located(
                         (By.XPATH, "//table//tbody//tr")
                     ))
                     print("[DEBUG] Company table and rows loaded ✅")
@@ -164,7 +113,7 @@ class GrowjoScraper:
                     words.pop()
                     continue
 
-                company_links = self.driver.find_elements(
+                company_links = driver.find_elements(
                     By.XPATH, "//table//tbody//a[starts-with(@href, '/company/')]"
                 )
 
@@ -182,13 +131,13 @@ class GrowjoScraper:
                     similarity = self._calculate_similarity(intended, link_full_text)
                     print(f"[DEBUG] Similarity score: {similarity:.2f}")
 
-                    if similarity >= 0.65:  # ✅ Accept only if good similarity
+                    if similarity >= 0.65:
                         print(f"[DEBUG] Found good match: '{link_full_text}', clicking...")
-                        self.driver.execute_script("arguments[0].click();", link)
+                        driver.execute_script("arguments[0].click();", link)
                         time.sleep(2)
 
-                        if "/company/" in self.driver.current_url:
-                            print(f"[DEBUG] Landed on company page: {self.driver.current_url}")
+                        if "/company/" in driver.current_url:
+                            print(f"[DEBUG] Landed on company page: {driver.current_url}")
                             return True
                         else:
                             print(f"[ERROR] After click, not redirected properly.")
@@ -212,6 +161,7 @@ class GrowjoScraper:
             return False
 
 
+
     def _calculate_similarity(self, a: str, b: str) -> float:
         """
         Helper to calculate similarity between two strings using difflib.
@@ -221,86 +171,118 @@ class GrowjoScraper:
         b_clean = b.replace(",", "").replace(".", "").lower()
         return difflib.SequenceMatcher(None, a_clean, b_clean).ratio()
 
-
-
-
-
-        
-    def extract_company_details(self, company_name):
-        details = {"company": company_name, "city": "", "state": "", "industry": "", "website": "", "employees": "", "revenue": "", "specialties": ""}
+    def extract_company_details(self, driver, company_name):
+        details = {
+            "company": company_name,
+            "city": "",
+            "state": "",
+            "industry": "",
+            "website": "",
+            "employees": "",
+            "revenue": "",
+            "specialties": ""
+        }
         try:
             # City
             try:
-                city_elem = self.driver.find_element(By.XPATH, "//a[contains(@href, '/city/')]")
+                city_elem = driver.find_element(By.XPATH, "//a[contains(@href, '/city/')]")
                 details["city"] = city_elem.text.strip()
             except:
                 pass
+
             # State
             try:
-                state_elem = self.driver.find_element(By.XPATH, "//a[contains(@href, '/state/')]")
+                state_elem = driver.find_element(By.XPATH, "//a[contains(@href, '/state/')]")
                 details["state"] = state_elem.text.strip()
             except:
                 pass
+
             # Industry
             try:
-                industry_elem = self.driver.find_element(By.XPATH, "//a[contains(@href, '/industry/')]")
+                industry_elem = driver.find_element(By.XPATH, "//a[contains(@href, '/industry/')]")
                 details["industry"] = industry_elem.text.strip()
             except:
                 pass
+
             # Website
             try:
-                website_elem = self.driver.find_element(By.XPATH, "//a[contains(@target, '_blank') and contains(@href, '//') and img]")
-                details["website"] = website_elem.get_attribute("href").replace("//", "https://") if website_elem.get_attribute("href").startswith("//") else website_elem.get_attribute("href")
+                website_elem = driver.find_element(By.XPATH, "//a[contains(@target, '_blank') and contains(@href, '//') and img]")
+                href = website_elem.get_attribute("href")
+                if href:
+                    details["website"] = href.replace("//", "https://") if href.startswith("//") else href
             except:
                 pass
-            # Revenue (est)
+
+            # Revenue
             try:
-                emp_elem = self.driver.find_elements(By.XPATH, "//p[contains(@style, 'font-size: 18px') and contains(@style, 'font-weight: bold')]")
-                if emp_elem:
-                    details["revenue"] = emp_elem[0].text.strip()
-                if len(emp_elem) > 1:
-                    details["employees"] = emp_elem[1].text.strip()
+                revenue_section = driver.find_element(By.XPATH, "//h2[contains(text(), 'Estimated Revenue & Valuation')]/following-sibling::ul[1]/li")
+                if revenue_section:
+                    revenue_text = revenue_section.text.strip()
+                    print(f"[DEBUG] Raw revenue section text: {revenue_text}")
+
+                    import re
+                    match = re.search(r"\$[0-9\.]+[BMK]?", revenue_text)
+                    if match:
+                        details["revenue"] = match.group(0)
             except:
                 pass
-            # Keywords
+
+            # Employees
             try:
-                keywords_elem = self.driver.find_element(By.XPATH, "//strong[contains(text(), 'keywords:')]")
+                employee_section = driver.find_element(By.XPATH, "//h2[contains(., 'Employee Data')]/following-sibling::ul[1]/li")
+                if employee_section:
+                    employee_text = employee_section.text.strip()
+                    print(f"[DEBUG] Raw employee section text: {employee_text}")
+
+                    import re
+                    match = re.search(r"\b\d+\b", employee_text)
+                    if match:
+                        details["employees"] = match.group(0)
+            except:
+                pass
+
+            # Keywords (Specialties)
+            try:
+                keywords_elem = driver.find_element(By.XPATH, "//strong[contains(text(), 'keywords:')]")
                 parent = keywords_elem.find_element(By.XPATH, "..")
                 parent_text = parent.text
                 if 'keywords:' in parent_text:
-                    specialties = parent_text.split('keywords:', 1)[1].strip()
-                    details["specialties"] = specialties
+                    details["specialties"] = parent_text.split('keywords:', 1)[1].strip()
                 else:
                     details["specialties"] = ''
             except:
                 details["specialties"] = ''
-        except Exception as e:
-            print(f"Error extracting details for {company_name}: {str(e)}")
-        return details
-    
-    def find_decision_maker(self):
-        try:
-            print("[DEBUG] Looking for decision makers...")
 
-            # 🛠️ Step 1: Scroll to bottom to trigger full people loading
-            print("[DEBUG] Scrolling to trigger lazy loading of all employees...")
-            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        except Exception as e:
+            print(f"[ERROR] Error extracting company details for {company_name}: {str(e)}")
+
+        return details
+
+
+    
+    def find_decision_maker(self, driver, wait, company_name):
+        try:
+            print(f"[DEBUG] Looking for decision makers in '{company_name}'...")
+
+            # Step 1: Scroll to bottom to trigger lazy loading
+            print("[DEBUG] Scrolling to trigger lazy loading of employees...")
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
             time.sleep(2)
 
-            # 🛠️ Step 2: Wait until at least 5 rows are loaded
+            # Step 2: Wait until at least 5 rows are present
             try:
-                self.wait.until(
+                wait.until(
                     EC.presence_of_element_located(
                         (By.XPATH, "//h2[contains(., 'People')]/following::table//tbody/tr[5]")
                     )
                 )
                 print("[DEBUG] People table and at least 5 rows loaded ✅")
             except TimeoutException:
-                print("[ERROR] People table or enough rows not loaded after scrolling.")
+                print(f"[ERROR] People table or enough rows not loaded after scrolling for {company_name}.")
                 return None
 
-            # 🛠️ Step 3: Locate and parse people
-            people_table = self.driver.find_element(
+            # Step 3: Locate and parse people
+            people_table = driver.find_element(
                 By.XPATH, "//h2[contains(., 'People')]/following::table[1]"
             )
             rows = people_table.find_elements(By.TAG_NAME, "tr")[1:]  # Skip header
@@ -363,12 +345,12 @@ class GrowjoScraper:
                     print(f"[ERROR] Could not extract person info: {str(e)}")
                     continue
 
-            # 🛠️ Step 4: Pick best candidate
+            # Step 4: Pick best candidate
             if candidates:
                 candidates.sort(key=lambda x: x["priority"])
                 best_candidate = candidates[0]
 
-                print(f"[DEBUG] Best candidate found: {best_candidate['name']} - {best_candidate['title']} (Priority: {best_candidate['priority']})")
+                print(f"[DEBUG] Best candidate selected: {best_candidate['name']} - {best_candidate['title']} (Priority: {best_candidate['priority']})")
 
                 return {
                     "name": best_candidate["name"],
@@ -384,20 +366,17 @@ class GrowjoScraper:
             return None
 
 
-
-
-
-    def scrape_decision_maker_details(self, profile_url):
+    def scrape_decision_maker_details(self, profile_url, driver):
         try:
             print(f"[DEBUG] Navigating to decision maker profile: {profile_url}")
-            self.driver.get(profile_url)
+            driver.get(profile_url)
             time.sleep(3)
 
             # Click reveal buttons
-            reveal_buttons = self.driver.find_elements(By.XPATH, "//button[contains(text(), 'Reveal')] | //a[contains(text(), 'Reveal')]")
+            reveal_buttons = driver.find_elements(By.XPATH, "//button[contains(text(), 'Reveal')] | //a[contains(text(), 'Reveal')]")
             for btn in reveal_buttons:
                 try:
-                    self.driver.execute_script("arguments[0].click();", btn)
+                    driver.execute_script("arguments[0].click();", btn)
                     print(f"[DEBUG] Clicked a reveal button.")
                     time.sleep(2)
                 except Exception as e:
@@ -409,7 +388,7 @@ class GrowjoScraper:
 
             try:
                 # Find all <a href="/join"> elements after reveal
-                join_links = self.driver.find_elements(By.XPATH, "//a[contains(@href, '/join')]")
+                join_links = driver.find_elements(By.XPATH, "//a[contains(@href, '/join')]")
                 print(f"[DEBUG] Found {len(join_links)} elements with href='/join'")
 
                 for elem in join_links:
@@ -432,7 +411,7 @@ class GrowjoScraper:
             # Scrape LinkedIn link separately
             linkedin_url = None
             try:
-                linkedin_links = self.driver.find_elements(By.XPATH, "//a[contains(@href, 'linkedin.com')]")
+                linkedin_links = driver.find_elements(By.XPATH, "//a[contains(@href, 'linkedin.com')]")
                 if linkedin_links:
                     linkedin_url = linkedin_links[0].get_attribute("href")
             except Exception as e:
@@ -453,25 +432,28 @@ class GrowjoScraper:
             }
 
 
-
-    def scrape_company(self, company_name):
-        """
-        Full flow: login if needed, search company, scrape company details,
-        find decision maker, scrape decision maker details, and return all combined info.
-        """
+    def scrape_full_pipeline(self, company_name):
+        """Master method to run full scraping pipeline."""
         try:
+            # Step 1: Public scrape
+            if not self.search_company(self.driver_public, self.wait_public, company_name):
+                return {"error": "Company not found."}
+            
+            company_info = self.extract_company_details(self.driver_public, company_name)
+            decision_maker = self.find_decision_maker(self.driver_public, self.wait_public, company_name)
+
+            if not decision_maker:
+                return {"error": "No decision maker found."}
+
+            profile_url = decision_maker["profile_url"]
+
+            # Step 2: Logged-in scrape
             if not self.logged_in:
-                self.login()
+                self.login_logged_in_browser()
 
-            success = self.search_company(company_name)
-            if not success:
-                print(f"[ERROR] Could not find company page for '{company_name}'")
-                return self._build_default_result(company_name)
+            sensitive_info = self.scrape_decision_maker_details(profile_url, self.driver_logged_in)
 
-            # Extract company details
-            company_info = self.extract_company_details(company_name)
-
-            result = {
+            return {
                 "company_name": company_info.get("company", company_name),
                 "company_website": company_info.get("website", "not found"),
                 "revenue": company_info.get("revenue", "not found"),
@@ -479,58 +461,20 @@ class GrowjoScraper:
                 "industry": company_info.get("industry", "not found"),
                 "interests": company_info.get("specialties", "not found"),
                 "employee_count": company_info.get("employees", "not found"),
+                "decider_name": decision_maker.get("name", "not found"),
+                "decider_title": decision_maker.get("title", "not found"),
+                "decider_email": sensitive_info.get("email", "not found"),
+                "decider_phone": sensitive_info.get("phone", "not found"),
+                "decider_linkedin": sensitive_info.get("linkedin", "not found"),
             }
-
-            # Find and scrape decision maker
-            decider = self.find_decision_maker()
-            if decider and decider.get("profile_url"):
-                decider_details = self.scrape_decision_maker_details(decider["profile_url"])
-                result.update({
-                    "decider_name": decider.get("name", "not found"),
-                    "decider_title": decider.get("title", "not found"),
-                    "decider_email": decider_details.get("email", "not found"),
-                    "decider_phone": decider_details.get("phone", "not found"),
-                    "decider_linkedin": decider_details.get("linkedin", "not found"),
-                })
-            else:
-                # If no decider found
-                result.update({
-                    "decider_name": "not found",
-                    "decider_title": "not found",
-                    "decider_email": "not found",
-                    "decider_phone": "not found",
-                    "decider_linkedin": "not found",
-                })
-
-            return result
-
         except Exception as e:
-            print(f"[ERROR] Unexpected error in scrape_company for '{company_name}': {str(e)}")
-            return self._build_default_result(company_name)
-
-    def _build_default_result(self, company_name):
-        """
-        Helper to return default empty result if something fails.
-        """
-        return {
-            "company_name": company_name,
-            "company_website": "not found",
-            "revenue": "not found",
-            "location": "not found",
-            "industry": "not found",
-            "interests": "not found",
-            "employee_count": "not found",
-            "decider_name": "not found",
-            "decider_title": "not found",
-            "decider_email": "not found",
-            "decider_phone": "not found",
-            "decider_linkedin": "not found"
-        }
+            print(f"[ERROR] Full pipeline error: {str(e)}")
+            return {"error": str(e)}
 
     def close(self):
-        """Safely close the browser driver."""
+        """Close both browser instances."""
         try:
-            if hasattr(self, 'driver') and self.driver:
-                self.driver.quit()
+            self.driver_public.quit()
+            self.driver_logged_in.quit()
         except Exception as e:
-            print(f"[ERROR] Error during browser closing: {str(e)}")
+            print(f"[ERROR] Closing drivers error: {str(e)}")

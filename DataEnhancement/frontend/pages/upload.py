@@ -32,6 +32,7 @@ if token and "logged_in" not in st.session_state:
 if not st.session_state.get("logged_in"):
     st.warning("Please log in first.")
     st.stop()
+    
 
 def auth_headers():
     token = st.session_state.get("token")
@@ -163,6 +164,23 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
         apollo_domains = rows_to_update["Website"].dropna().unique().tolist()
         apollo_domains = [w.replace("http://", "").replace("https://", "").replace("www.", "").strip().lower() for w in apollo_domains]
 
+ 
+        apollo_person_response = requests.post(
+            f"{BACKEND_URL}/api/apollo-best-person-batch",
+            json={"domains": apollo_domains},
+            headers=auth_headers()
+        )
+        if apollo_person_response.status_code == 200:
+            try:
+                apollo_person_data = apollo_person_response.json()
+                apollo_person_lookup = {r["domain"]: r for r in apollo_person_data if "domain" in r}
+            except Exception as e:
+                st.error(f"❌ Failed to parse Apollo person JSON: {e}")
+                apollo_person_lookup = {}
+        else:
+            st.error(f"❌ Apollo person batch API failed: {apollo_person_response.status_code} {apollo_person_response.text}")
+            apollo_person_lookup = {}
+
         apollo_response = requests.post(
             f"{BACKEND_URL}/api/apollo-scrape-batch",
             json={"domains": apollo_domains}
@@ -185,7 +203,10 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
             domain_apollo = normalize_website(row.get("Website"))
             domain = row["Company"]
             apollo = apollo_lookup.get(domain_apollo, {})
+            apollo_person = apollo_person_lookup.get(domain_apollo, {})
             growjo = growjo_results.get(domain.lower(), {})
+            print(growjo.get(domain.lower()))
+
 
 
             if not row["Revenue"].strip():
@@ -212,24 +233,24 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
             if not row["Product/Service Category"].strip():
                 rows_to_update.at[idx, "Product/Service Category"] = apollo.get("keywords", "")
 
-            if not row["Email"].strip() and growjo.get("decider_email"):
-                rows_to_update.at[idx, "Email"] = growjo.get("decider_email", "")
-            if not row["Phone Number"].strip() and growjo.get("decider_phone"):
-                rows_to_update.at[idx, "Phone Number"] = growjo.get("decider_phone", "")
-            if not row["Owner's LinkedIn"].strip() and growjo.get("decider_linkedin"):
-                rows_to_update.at[idx, "Owner's LinkedIn"] = growjo.get("decider_linkedin", "")
-            if not row["Title"].strip() and growjo.get("decider_title"):
-                rows_to_update.at[idx, "Title"] = growjo.get("decider_title", "")
-            if not row["Industry "].strip() and growjo.get("industry"):
+            if not row["Email"].strip():
+                rows_to_update.at[idx, "Email"] = growjo.get("decider_email", "") or apollo_person.get("email")
+            if not row["Phone Number"].strip(): 
+                rows_to_update.at[idx, "Phone Number"] = growjo.get("decider_phone", "") or apollo_person.get("phone_number")
+            if not row["Owner's LinkedIn"].strip():
+                rows_to_update.at[idx, "Owner's LinkedIn"] = growjo.get("decider_linkedin", "") or apollo_person.get("linkedin_url")
+            if not row["Title"].strip():
+                rows_to_update.at[idx, "Title"] = growjo.get("decider_title", "") or apollo_person.get("title")
+            if not row["Industry "].strip():
                 rows_to_update.at[idx, "Industry "] = growjo.get("industry", "")
 
             decider_name = growjo.get("decider_name", "")
             first_name, last_name = split_name(decider_name)
 
             if not row["First Name"].strip():
-                rows_to_update.at[idx, "First Name"] = first_name
+                rows_to_update.at[idx, "First Name"] = first_name or apollo_person.get("first_name", "")
             if not row["Last Name"].strip():
-                rows_to_update.at[idx, "Last Name"] = last_name
+                rows_to_update.at[idx, "Last Name"] = last_name or apollo_person.get("last_name", "")
 
             progress_bar.progress((i + 1) / len(rows_to_update))
             status_text.text(f"Enhanced {i + 1} of {len(rows_to_update)} rows")
