@@ -163,7 +163,6 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
 
         apollo_domains = rows_to_update["Website"].dropna().unique().tolist()
         apollo_domains = [w.replace("http://", "").replace("https://", "").replace("www.", "").strip().lower() for w in apollo_domains]
-
  
         apollo_person_response = requests.post(
             f"{BACKEND_URL}/api/find-best-person-batch",
