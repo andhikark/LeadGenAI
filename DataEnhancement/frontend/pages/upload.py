@@ -166,7 +166,7 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
 
  
         apollo_person_response = requests.post(
-            f"{BACKEND_URL}/api/apollo-best-person-batch",
+            f"{BACKEND_URL}/api/find-best-person-batch",
             json={"domains": apollo_domains},
             headers=auth_headers()
         )
