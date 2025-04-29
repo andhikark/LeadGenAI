@@ -2,8 +2,3 @@ requests==2.32.3
 PyJWT==2.10.1
 streamlit==1.43.2
 streamlit-cookies-controller==0.0.4
-streamlit-elements
-streamlit-aggrid
-hydralit_components
-st-aggrid
-hydralit-components
