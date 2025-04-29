@@ -10,7 +10,7 @@ from selenium.webdriver.common.by import By
 import shutil
 from scraper.growjoScraper import GrowjoScraper
 from security import generate_token, token_required, VALID_USERS
-from scraper.apollo_people import get_best_person  
+from scraper.apollo_people import find_best_person, enrich_person
 
 
 app = Flask(__name__)
@@ -135,31 +135,56 @@ def scrape_growjo_batch():
         print(f"[FATAL ERROR] {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/apollo-best-person-batch", methods=["POST"])
-def apollo_best_person_batch_api():
+@app.route("/api/find-best-person-batch", methods=["POST"])
+def api_find_best_person_batch():
     try:
         data = request.get_json()
         domains = data.get("domains")
 
         if not domains or not isinstance(domains, list):
-            return jsonify({"error": "Missing or invalid field: domains (must be a list)"}), 400
+            return jsonify({"error": "Missing or invalid 'domains' field"}), 400
 
         results = []
-
         for domain in domains:
-            try:
-                best_person = get_best_person(domain)
-                if best_person:
-                    results.append(best_person)
-                else:
-                    results.append({"domain": domain, "message": "No suitable person found"})
-            except Exception as e:
-                results.append({"domain": domain, "error": str(e)})
+            best_person = find_best_person(domain)
+            if not best_person:
+                results.append({
+                    "domain": domain,
+                    "error": "No person found"
+                })
+                continue
+
+            enriched = enrich_person(best_person.get("first_name", ""), best_person.get("last_name", ""), domain)
+
+            if not enriched:
+                results.append({
+                    "domain": domain,
+                    "first_name": best_person.get("first_name", ""),
+                    "last_name": best_person.get("last_name", ""),
+                    "title": best_person.get("title", ""),
+                    "email": "email_not_found@domain.com",
+                    "phone_number": "No phone found",
+                    "linkedin_url": best_person.get("linkedin_url", ""),
+                    "company": best_person.get("organization", {}).get("name", "")
+                })
+                continue
+
+            results.append({
+                "domain": domain,
+                "first_name": enriched.get("first_name", best_person.get("first_name", "")),
+                "last_name": enriched.get("last_name", best_person.get("last_name", "")),
+                "title": enriched.get("title", best_person.get("title", "")),
+                "email": enriched.get("email", "email_not_found@domain.com"),
+                "phone_number": enriched.get("phone_numbers", [{}])[0].get("sanitized_number", "No phone found") if enriched.get("phone_numbers") else "No phone found",
+                "linkedin_url": enriched.get("linkedin_url", best_person.get("linkedin_url", "")),
+                "company": enriched.get("organization_name", best_person.get("organization", {}).get("name", ""))
+            })
 
         return jsonify(results), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))  # Render will provide the port
     app.run(host="0.0.0.0", port=port, debug=True)
