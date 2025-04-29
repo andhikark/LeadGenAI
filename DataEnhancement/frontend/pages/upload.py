@@ -58,6 +58,23 @@ def normalize_website(website):
         return ""
     return website.replace("http://", "").replace("https://", "").replace("www.", "").strip().lower()
 
+def revenue_to_number(revenue_str):
+    """Convert revenue like '500K', '2M', '$1.2B' to a numeric float."""
+    if not isinstance(revenue_str, str) or revenue_str.strip() == "":
+        return 0
+    revenue_str = revenue_str.replace("$", "").replace(",", "").strip().upper()
+    try:
+        if revenue_str.endswith("B"):
+            return float(revenue_str[:-1]) * 1_000_000_000
+        elif revenue_str.endswith("M"):
+            return float(revenue_str[:-1]) * 1_000_000
+        elif revenue_str.endswith("K"):
+            return float(revenue_str[:-1]) * 1_000
+        else:
+            return float(revenue_str)
+    except ValueError:
+        return 0
+
 
 st.set_page_config(page_title="📤 Upload CSV & Normalize", layout="wide")
 st.title("📤 Upload & Normalize Lead Data")
@@ -145,6 +162,7 @@ if st.session_state.confirmed_selection_df is not None:
         st.session_state.normalized_df = normalized_df.copy()
         st.markdown("### ✅ Normalized Data Preview")
         st.dataframe(normalized_df.head(), use_container_width=True)
+        
 
         st.download_button("📥 Download Normalized CSV", data=normalized_df.to_csv(index=False).encode("utf-8"), file_name="normalized_leads.csv", mime="text/csv")
 
@@ -262,5 +280,73 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
         minutes = elapsed_time / 60
         st.success(f"✅ Enrichment complete in {minutes:.2f} minutes!")
         st.dataframe(enhanced_df.head(), use_container_width=True)
+        # Save for future interaction (filtering, selection)
+        st.session_state.enriched_df = enhanced_df.copy()
+        st.session_state.enrichment_done = True
+
         csv = enhanced_df.to_csv(index=False).encode("utf-8")
         st.download_button("📥 Download Enhanced CSV", csv, file_name="apollo_linkedin_growjo_enriched.csv", mime="text/csv")
+
+# Step 4: Filter Enhanced Data — OUTSIDE of the button block
+    if st.session_state.get("enrichment_done") and "enriched_df" in st.session_state:
+        st.markdown("### 🧹 Step 4: Filter Enhanced Data")
+
+        enhanced_df = st.session_state.enriched_df.copy()
+
+        filter_col1, filter_col2 = st.columns(2)
+        with filter_col1:
+            min_revenue = st.text_input("Minimum Revenue (e.g., 500K, 1M, 2B)", value="", key="min_revenue_input")
+        with filter_col2:
+            min_employees = st.number_input("Minimum Employees", value=0, step=1, key="min_employees_input")
+
+        # Apply filtering
+        enhanced_df["Revenue Numeric"] = enhanced_df["Revenue"].apply(revenue_to_number)
+        enhanced_df["Employees Numeric"] = pd.to_numeric(enhanced_df["Employees count"], errors="coerce").fillna(0)
+
+        filtered_df = enhanced_df.copy()
+
+        if min_revenue:
+            min_revenue_num = revenue_to_number(min_revenue)
+            filtered_df = filtered_df[filtered_df["Revenue Numeric"] >= min_revenue_num]
+
+        if min_employees > 0:
+            filtered_df = filtered_df[filtered_df["Employees Numeric"] >= min_employees]
+
+        # Show filtered result
+        st.dataframe(filtered_df.drop(columns=["Revenue Numeric", "Employees Numeric"]).head(), use_container_width=True)
+
+        if st.button("✅ Confirm Filtered Data"):
+            st.session_state.filtered_df = filtered_df.drop(columns=["Revenue Numeric", "Employees Numeric"]).copy()
+            st.success("✅ Filtered data confirmed! Proceed to select final rows.")
+
+
+
+# Final Step: Select rows to download
+if "filtered_df" in st.session_state:
+    st.markdown("### 🖱️ Step 5: Select Final Rows to Download")
+
+    filtered_data_with_select = st.session_state.filtered_df.copy()
+    filtered_data_with_select["Select Row"] = False
+
+    edited_final_df = st.data_editor(
+        filtered_data_with_select,
+        use_container_width=True,
+        num_rows="dynamic",
+        key="final_selection_editor",
+        disabled=filtered_data_with_select.columns[:-1].tolist()
+    )
+
+    selected_final_df = edited_final_df[edited_final_df["Select Row"] == True].drop(columns=["Select Row"])
+
+    st.markdown(f"**🧮 Selected Final Rows: `{len(selected_final_df)}`**")
+
+    if len(selected_final_df) > 0:
+        csv_final = selected_final_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "📥 Download Final Selected CSV",
+            csv_final,
+            file_name="final_selected_leads.csv",
+            mime="text/csv"
+        )
+    else:
+        st.info("Please select at least one row to enable download.")
