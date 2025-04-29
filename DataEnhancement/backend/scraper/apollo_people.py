@@ -3,7 +3,7 @@ import requests
 
 app = Flask(__name__)
 
-APOLLO_API_KEY = "8gGyji1LXyY3yu78MYwb5g"
+APOLLO_API_KEY = os.getenv("APOLLO_API_KEY")
 APOLLO_SEARCH_URL = "https://api.apollo.io/api/v1/mixed_people/search"
 APOLLO_ENRICH_URL = "https://api.apollo.io/api/v1/people/match"
 
