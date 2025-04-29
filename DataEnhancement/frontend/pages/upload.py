@@ -94,10 +94,10 @@ if uploaded_file:
         selected_df = pd.DataFrame(edited_df)
         rows_to_enhance = selected_df[selected_df['Select Row'] == True].drop(columns=['Select Row'])
         selected_count = len(rows_to_enhance)
-        st.markdown(f"**🧮 Selected Rows: `{selected_count}` / 10**")
+        st.markdown(f"**🧮 Selected Rows: `{selected_count}` / 100**")
 
-        if selected_count > 10:
-            st.error("❌ You can only select up to 10 rows for enhancement.")
+        if selected_count > 100:
+            st.error("❌ You can only select up to 100 rows for enhancement.")
             st.button("✅ Confirm Selected Rows", disabled=True)
         else:
             if st.button("✅ Confirm Selected Rows"):
