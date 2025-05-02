@@ -30,6 +30,7 @@ def enrich_single_company(domain):
             annual_revenue_printed = org.get("annual_revenue_printed", "")
             website_url = org.get("website_url", "")
             employee_count = org.get("estimated_num_employees", "")
+            industry = org.get("industry", "")
 
             return {
                 "founded_year": founded_year,
@@ -37,7 +38,8 @@ def enrich_single_company(domain):
                 "keywords": keywords_combined,
                 "annual_revenue_printed": annual_revenue_printed,
                 "website_url": website_url,
-                "employee_count": employee_count
+                "employee_count": employee_count,
+                "industry": industry
             }
         else:
             return {"error": f"Status {response.status_code}"}

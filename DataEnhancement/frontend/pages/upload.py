@@ -88,15 +88,10 @@ STANDARD_COLUMNS = [
 
     # 👤 Primary Contact (Decision Maker)
     'First Name', 'Last Name', 'Title', 'Email', 'Phone Number',
-    'LinkedIn URL', "Owner's LinkedIn", 'Owner Age',
+    'LinkedIn URL', "Owner's LinkedIn",
 
     # 🧩 Engagement Details / Notes
-    'Associated Members', 'Additional Notes', 'Score', 'Reasoning for r//y/g',
-
-    # 💌 Outreach Personalization
-    'Email customization #1', 'Subject Line #1',
-    'Email Customization #2', 'Subject Line #2',
-    'LinkedIn Customization #1', 'LinkedIn Customization #2'
+    'Score',
 ]
 
 st.markdown("### 📎 Step 1: Upload Your CSV")
@@ -263,7 +258,16 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
             fill("Industry ", growjo.get("industry"), apollo.get("industry"))
             fill("Associated Members", "", "")
             fill("Employees count", growjo.get("employee_count"), apollo.get("employee_count"))
-            fill("Product/Service Category", growjo.get("interests"), apollo.get("interests"))
+            # Apollo may return list of keywords
+            apollo_keywords = ", ".join(apollo.get("keywords")) if isinstance(apollo.get("keywords"), list) else apollo.get("keywords", "")
+            growjo_interests = growjo.get("interests", "")
+
+            # Use Apollo if Growjo returns "N/A" or is missing
+            if growjo_interests.strip().lower() == "n/a" or not growjo_interests.strip():
+                rows_to_update.at[idx, "Product/Service Category"] = apollo_keywords
+            else:
+                rows_to_update.at[idx, "Product/Service Category"] = growjo_interests
+
 
             # Decision-maker: Compare Growjo vs ApolloPerson
             growjo_fields = [
