@@ -10,7 +10,25 @@ def split_name(full_name):
 def normalize_website(website):
     if not website:
         return ""
-    return website.replace("http://", "").replace("https://", "").replace("www.", "").strip().lower()
+    
+    # Import urlparse inside the function to avoid circular imports
+    from urllib.parse import urlparse
+    
+    # First perform basic cleaning
+    website = website.strip().lower()
+    
+    # Add protocol if missing to make urlparse work properly
+    if not website.startswith(('http://', 'https://')):
+        website = 'http://' + website
+    
+    # Use urlparse to extract just the domain (netloc)
+    parsed = urlparse(website)
+    domain = parsed.netloc
+    
+    # Remove www. prefix
+    domain = domain.replace('www.', '')
+    
+    return domain
 
 # Simulated data (same as in real test)
 growjo = {

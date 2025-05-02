@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import requests
@@ -7,6 +6,7 @@ import os
 from dotenv import load_dotenv
 from config import BACKEND_URL
 import concurrent.futures
+from urllib.parse import urlparse
 
 
 # ✅ Simple login check using session state only
@@ -33,7 +33,22 @@ def split_name(full_name):
 def normalize_website(website):
     if pd.isna(website) or not isinstance(website, str):
         return ""
-    return website.replace("http://", "").replace("https://", "").replace("www.", "").strip().lower()
+    
+    # First perform basic cleaning
+    website = website.strip().lower()
+    
+    # Add protocol if missing to make urlparse work properly
+    if not website.startswith(('http://', 'https://')):
+        website = 'http://' + website
+    
+    # Use urlparse to extract just the domain (netloc)
+    parsed = urlparse(website)
+    domain = parsed.netloc
+    
+    # Remove www. prefix
+    domain = domain.replace('www.', '')
+    
+    return domain
 
 def revenue_to_number(revenue_str):
     """Convert revenue like '500K', '2M', '$1.2B' to a numeric float."""
