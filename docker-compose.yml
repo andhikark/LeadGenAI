@@ -3,13 +3,22 @@ version: '3.8'
 services:
   backend:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
     container_name: leadgen-api
     ports:
       - "5050:5050"
     env_file:
       - .env
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: leadgen-frontend
+    ports:
+      - "8501:8501"
     restart: always
 
   watchtower:

@@ -1,45 +1,22 @@
-
 import streamlit as st
-from streamlit_cookies_controller import CookieController
 import pandas as pd
 import requests
-import jwt
 import time
+import os
+from dotenv import load_dotenv
 from config import BACKEND_URL
+import concurrent.futures
+from urllib.parse import urlparse
 
 
-JWT_SECRET = "fallback_secret_change_me_in_production"
-JWT_ALGORITHM = "HS256"
-
-cookies = CookieController()
-token = cookies.get("auth_token")
-
-if token and "logged_in" not in st.session_state:
-    try:
-        decoded = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        st.session_state.token = token
-        st.session_state.logged_in = True
-        st.session_state.username = decoded.get("username")
-    except jwt.ExpiredSignatureError:
-        cookies.delete("auth_token")
-        st.warning("Session expired.")
-        st.stop()
-    except jwt.InvalidTokenError:
-        cookies.delete("auth_token")
-        st.warning("Invalid session.")
-        st.stop()
-
+# ✅ Simple login check using session state only
 if not st.session_state.get("logged_in"):
-    st.warning("Please log in first.")
+    st.warning("🚫 Please log in first.")
     st.stop()
-    
 
+# ✅ Dummy auth headers (if backend still expects headers)
 def auth_headers():
-    token = st.session_state.get("token")
-    if not token:
-        st.error("Missing token. Please log in again.")
-        st.stop()
-    return {"Authorization": f"Bearer {token}"}
+    return {}  # You can return {"Authorization": "dummy"} if needed by backend
 
 def normalize_name(name):
     return name.strip().lower().replace(" ", "").replace("-", "").replace(".", "") if name else ""
@@ -56,7 +33,22 @@ def split_name(full_name):
 def normalize_website(website):
     if pd.isna(website) or not isinstance(website, str):
         return ""
-    return website.replace("http://", "").replace("https://", "").replace("www.", "").strip().lower()
+    
+    # First perform basic cleaning
+    website = website.strip().lower()
+    
+    # Add protocol if missing to make urlparse work properly
+    if not website.startswith(('http://', 'https://')):
+        website = 'http://' + website
+    
+    # Use urlparse to extract just the domain (netloc)
+    parsed = urlparse(website)
+    domain = parsed.netloc
+    
+    # Remove www. prefix
+    domain = domain.replace('www.', '')
+    
+    return domain
 
 def revenue_to_number(revenue_str):
     """Convert revenue like '500K', '2M', '$1.2B' to a numeric float."""
@@ -89,12 +81,22 @@ if "confirmed_selection_df" not in st.session_state:
     st.session_state.confirmed_selection_df = None
 
 STANDARD_COLUMNS = [
-    'Company', 'City', 'State', 'First Name', 'Last Name', 'Email', 'Title', 'Website',
-    'LinkedIn URL', 'Industry ', 'Revenue', 'Product/Service Category',
-    'Business Type (B2B, B2B2C) ', 'Associated Members', 'Employees count', 'Rev Source', 'Year Founded',
-    "Owner's LinkedIn", 'Owner Age', 'Phone Number', 'Additional Notes', 'Score',
-    'Email customization #1', 'Subject Line #1', 'Email Customization #2', 'Subject Line #2',
-    'LinkedIn Customization #1', 'LinkedIn Customization #2', 'Reasoning for r//y/g'
+    # 🏢 Company Information
+    'Company', 'Website', 'Industry ', 'Product/Service Category',
+    'Business Type (B2B, B2B2C) ', 'Employees count', 'Revenue', 'Rev Source',
+    'Year Founded', 'City', 'State',
+
+    # 👤 Primary Contact (Decision Maker)
+    'First Name', 'Last Name', 'Title', 'Email', 'Phone Number',
+    'LinkedIn URL', "Owner's LinkedIn", 'Owner Age',
+
+    # 🧩 Engagement Details / Notes
+    'Associated Members', 'Additional Notes', 'Score', 'Reasoning for r//y/g',
+
+    # 💌 Outreach Personalization
+    'Email customization #1', 'Subject Line #1',
+    'Email Customization #2', 'Subject Line #2',
+    'LinkedIn Customization #1', 'LinkedIn Customization #2'
 ]
 
 st.markdown("### 📎 Step 1: Upload Your CSV")
@@ -103,6 +105,7 @@ uploaded_file = st.file_uploader("Choose a CSV file to upload", type=["csv"])
 if uploaded_file:
     try:
         df = pd.read_csv(uploaded_file)
+        df.columns = [col.strip() for col in df.columns]
         st.success("✅ File uploaded successfully!")
 
         st.markdown("### ✅ Step 2: Select Rows to Enhance")
@@ -176,116 +179,146 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
         base_df = st.session_state.normalized_df.copy()
         enhanced_df = base_df.copy()
 
-        mask = base_df["Company"].notnull()
-        rows_to_update = base_df[mask].copy()
+        rows_to_update = base_df[base_df["Company"].notnull()].copy()
 
-        apollo_domains = rows_to_update["Website"].dropna().unique().tolist()
-        apollo_domains = [w.replace("http://", "").replace("https://", "").replace("www.", "").strip().lower() for w in apollo_domains]
- 
-        apollo_person_response = requests.post(
-            f"{BACKEND_URL}/api/find-best-person-batch",
-            json={"domains": apollo_domains},
-            headers=auth_headers()
-        )
-        if apollo_person_response.status_code == 200:
-            try:
-                apollo_person_data = apollo_person_response.json()
-                apollo_person_lookup = {r["domain"]: r for r in apollo_person_data if "domain" in r}
-            except Exception as e:
-                st.error(f"❌ Failed to parse Apollo person JSON: {e}")
-                apollo_person_lookup = {}
-        else:
-            st.error(f"❌ Apollo person batch API failed: {apollo_person_response.status_code} {apollo_person_response.text}")
-            apollo_person_lookup = {}
+        import concurrent.futures
 
-        apollo_response = requests.post(
-            f"{BACKEND_URL}/api/apollo-scrape-batch",
-            json={"domains": apollo_domains}
-        )
-        apollo_lookup = {r["domain"]: r for r in apollo_response.json() if "domain" in r}
+        # Step 1: Prepare all domains and company names first
+        company_names = [row["Company"] for _, row in rows_to_update.iterrows()]
+        websites = [normalize_website(row.get("Website", "")) for _, row in rows_to_update.iterrows()]
+        unique_websites = list(set([w for w in websites if w]))
 
-        # Prepare list for batch call
-        growjo_request = [{"company": row["Company"]} for idx, row in rows_to_update.iterrows()]
+        # Step 2: Run all 3 APIs in parallel
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future_growjo = executor.submit(
+                requests.post,
+                f"{BACKEND_URL}/api/scrape-growjo-batch",
+                json=[{"company": c} for c in company_names],
+                headers=auth_headers()
+            )
+            future_apollo = executor.submit(
+                requests.post,
+                f"{BACKEND_URL}/api/apollo-scrape-batch",
+                json={"domains": unique_websites}
+            )
+            future_apollo_person = executor.submit(
+                requests.post,
+                f"{BACKEND_URL}/api/find-best-person-batch",
+                json={"domains": unique_websites},
+                headers=auth_headers()
+            )
 
-        # Send batch request
-        growjo_response = requests.post(
-            f"{BACKEND_URL}/api/scrape-growjo-batch",
-            json=growjo_request,
-            headers=auth_headers()
-        )
-        growjo_results = {item["company"].lower(): item for item in growjo_response.json() if "company" in item}
+            growjo_response = future_growjo.result().json()
+            apollo_response = future_apollo.result().json()
+            apollo_person_response = future_apollo_person.result().json()
 
+        # Step 3: Build lookup maps
+        growjo_map = {
+            (item.get("company_name") or item.get("input_name", "")).lower(): item
+            for item in growjo_response
+        }
+        apollo_map = {
+            item.get("domain"): item for item in apollo_response if item.get("domain")
+        }
+        apollo_person_map = {
+            item.get("domain"): item for item in apollo_person_response if item.get("domain")
+        }
 
+        # Step 4: Merge per row
         for i, (idx, row) in enumerate(rows_to_update.iterrows()):
-            domain_apollo = normalize_website(row.get("Website"))
-            domain = row["Company"]
-            apollo = apollo_lookup.get(domain_apollo, {})
-            apollo_person = apollo_person_lookup.get(domain_apollo, {})
-            growjo = growjo_results.get(domain.lower(), {})
-            print(growjo.get(domain.lower()))
+            company = row["Company"]
+            company_lower = company.lower()
+            website_norm = normalize_website(row.get("Website", ""))
+            growjo = growjo_map.get(company_lower, {})
+            apollo = apollo_map.get(website_norm, {})
+            apollo_person = apollo_person_map.get(website_norm, {})
 
+            def fill(col, val1, val2):
+                if col in row and not str(row[col]).strip():
+                    rows_to_update.at[idx, col] = val1 or val2 or ""
 
+            # General fields: Growjo first, fallback to Apollo
+            rows_to_update.at[idx, "Company"] = growjo.get("company_name", row["Company"])
 
-            if not row["Revenue"].strip():
-                revenue = apollo.get('annual_revenue_printed', '')
-                if revenue:
-                    rows_to_update.at[idx, "Revenue"] = f"${revenue}"
-                    rows_to_update.at[idx, "Rev Source"] = "Apollo"
-                else:
-                    rows_to_update.at[idx, "Revenue"] = ""
-                    rows_to_update.at[idx, "Rev Source"] = ""
+            # Always overwrite City/State if Growjo location is present
+            if growjo.get("location"):
+                parts = growjo["location"].split(", ")
+                if len(parts) > 0 and parts[0]:
+                    rows_to_update.at[idx, "City"] = parts[0]
+                if len(parts) > 1 and parts[1]:
+                    rows_to_update.at[idx, "State"] = parts[1]
 
-            if not row["Year Founded"].strip():
-                rows_to_update.at[idx, "Year Founded"] = apollo.get("founded_year", "")
-            if not normalize_website(row.get("Website")):
-                rows_to_update.at[idx, "Website"] = apollo.get("website_url", "")
-            if not row["LinkedIn URL"].strip():
-                rows_to_update.at[idx, "LinkedIn URL"] = apollo.get("linkedin_url", "") 
-            if not row["Industry "].strip():
-                rows_to_update.at[idx, "Industry "] = ""
-            if not row["Associated Members"].strip():
-                rows_to_update.at[idx, "Associated Members"] = ""
-            if not row["Employees count"].strip():
-                rows_to_update.at[idx, "Employees count"] = apollo.get("employee_count", "")
-            if not row["Product/Service Category"].strip():
-                rows_to_update.at[idx, "Product/Service Category"] = apollo.get("keywords", "")
+            # Always overwrite Website if available from either Growjo or Apollo
+            if growjo.get("company_website"):
+                rows_to_update.at[idx, "Website"] = growjo["company_website"]
+            elif apollo.get("company_website"):
+                rows_to_update.at[idx, "Website"] = apollo["company_website"]
 
-            if not row["Email"].strip():
-                rows_to_update.at[idx, "Email"] = growjo.get("decider_email", "") or apollo_person.get("email")
-            if not row["Phone Number"].strip(): 
-                rows_to_update.at[idx, "Phone Number"] = growjo.get("decider_phone", "") or apollo_person.get("phone_number")
-            if not row["Owner's LinkedIn"].strip():
-                rows_to_update.at[idx, "Owner's LinkedIn"] = growjo.get("decider_linkedin", "") or apollo_person.get("linkedin_url")
-            if not row["Title"].strip():
-                rows_to_update.at[idx, "Title"] = growjo.get("decider_title", "") or apollo_person.get("title")
-            if not row["Industry "].strip():
-                rows_to_update.at[idx, "Industry "] = growjo.get("industry", "")
+            fill("Revenue", growjo.get("revenue"), apollo.get("revenue"))
+            rows_to_update.at[idx, "Rev Source"] = "Growjo" if growjo.get("revenue") else "Apollo"
 
-            decider_name = growjo.get("decider_name", "")
-            first_name, last_name = split_name(decider_name)
+            fill("Year Founded", apollo.get("founded_year"), "")  # ✅ Add this line
+            fill("Website", growjo.get("company_website"), apollo.get("company_website"))
+            fill("LinkedIn URL", growjo.get("decider_linkedin"), apollo.get("linkedin_url"))
+            fill("Industry ", growjo.get("industry"), apollo.get("industry"))
+            fill("Associated Members", "", "")
+            fill("Employees count", growjo.get("employee_count"), apollo.get("employee_count"))
+            fill("Product/Service Category", growjo.get("interests"), apollo.get("interests"))
 
-            if not row["First Name"].strip():
-                rows_to_update.at[idx, "First Name"] = first_name or apollo_person.get("first_name", "")
-            if not row["Last Name"].strip():
-                rows_to_update.at[idx, "Last Name"] = last_name or apollo_person.get("last_name", "")
+            # Decision-maker: Compare Growjo vs ApolloPerson
+            growjo_fields = [
+                growjo.get("decider_name", ""),
+                growjo.get("decider_email", ""),
+                growjo.get("decider_phone", ""),
+                growjo.get("decider_linkedin", ""),
+                growjo.get("decider_title", "")
+            ]
+            apollo_fields = [
+                f"{apollo_person.get('first_name', '')} {apollo_person.get('last_name', '')}".strip(),
+                apollo_person.get("email", ""),
+                apollo_person.get("phone_number", ""),
+                apollo_person.get("linkedin_url", ""),
+                apollo_person.get("title", "")
+            ]
+
+            growjo_score = sum(1 for f in growjo_fields if f and f.lower() != "not found")
+            apollo_score = sum(1 for f in apollo_fields if f and f.lower() != "not found")
+            use_apollo = apollo_score > growjo_score
+
+            if use_apollo:
+                fill("Email", apollo_person.get("email"), "")
+                fill("Phone Number", apollo_person.get("phone_number"), "")
+                fill("Owner's LinkedIn", apollo_person.get("linkedin_url"), "")
+                fill("Title", apollo_person.get("title"), "")
+                fill("First Name", apollo_person.get("first_name"), "")
+                fill("Last Name", apollo_person.get("last_name"), "")
+            else:
+                decider_name = growjo.get("decider_name", "")
+                first_name, last_name = split_name(decider_name)
+                fill("Email", growjo.get("decider_email"), "")
+                fill("Phone Number", growjo.get("decider_phone"), "")
+                fill("Owner's LinkedIn", growjo.get("decider_linkedin"), "")
+                fill("Title", growjo.get("decider_title"), "")
+                fill("First Name", first_name, "")
+                fill("Last Name", last_name, "")
 
             progress_bar.progress((i + 1) / len(rows_to_update))
             status_text.text(f"Enhanced {i + 1} of {len(rows_to_update)} rows")
 
-        enhanced_df.update(rows_to_update)
 
-        end_time = time.time()
-        elapsed_time = end_time - start_time
 
-        minutes = elapsed_time / 60
-        st.success(f"✅ Enrichment complete in {minutes:.2f} minutes!")
+        for col in rows_to_update.columns:
+            enhanced_df.loc[rows_to_update.index, col] = rows_to_update[col]
+
+        elapsed_time = time.time() - start_time
+        st.success(f"✅ Enrichment complete in {elapsed_time / 60:.2f} minutes!")
         st.dataframe(enhanced_df.head(), use_container_width=True)
-        # Save for future interaction (filtering, selection)
         st.session_state.enriched_df = enhanced_df.copy()
         st.session_state.enrichment_done = True
 
         csv = enhanced_df.to_csv(index=False).encode("utf-8")
-        st.download_button("📥 Download Enhanced CSV", csv, file_name="apollo_linkedin_growjo_enriched.csv", mime="text/csv")
+        st.download_button("📥 Download Enhanced CSV", csv, file_name="enriched_leads.csv", mime="text/csv")
+
 
 # Step 4: Filter Enhanced Data — OUTSIDE of the button block
     if st.session_state.get("enrichment_done") and "enriched_df" in st.session_state:

@@ -1,25 +1,16 @@
 import streamlit as st
-import requests
-import jwt
+import os
+from dotenv import load_dotenv
 from streamlit_cookies_controller import CookieController
-from config import BACKEND_URL
+
+load_dotenv()
+
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "caprae@123")
 
 st.set_page_config(page_title="🔐 Login", layout="centered")
-JWT_ALGORITHM = "HS256"
 
 cookies = CookieController()
-token = cookies.get("auth_token")
-
-if token and "logged_in" not in st.session_state:
-    try:
-        # Decode token without verifying signature
-        decoded = jwt.decode(token, options={"verify_signature": False})
-        st.session_state.logged_in = True
-        st.session_state.token = token
-        st.session_state.username = decoded.get("username")
-    except Exception:
-        cookies.delete("auth_token")
-        st.warning("Invalid or expired session. Please log in again.")
 
 def login_form():
     st.markdown("""
@@ -63,28 +54,16 @@ def login_form():
                 st.warning("Please enter both username and password.")
                 return
 
-            try:
-                res = requests.post(f"{BACKEND_URL}/api/login", json={
-                    "username": username,
-                    "password": password
-                })
+            if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+                st.session_state.logged_in = True
+                st.session_state.username = username
+                cookies.set("auth_token", "dummy-token")  # optional
+                st.session_state.just_logged_in = True
+                st.rerun()
+            else:
+                st.error("❌ Invalid credentials.")
 
-                if res.status_code == 200:
-                    token = res.json().get("token")
-                    decoded = jwt.decode(token, options={"verify_signature": False})
-
-                    st.session_state.logged_in = True
-                    st.session_state.token = token
-                    st.session_state.username = decoded.get("username")
-
-                    cookies.set("auth_token", token)
-                    st.session_state.just_logged_in = True
-                    st.rerun()
-                else:
-                    st.error(f"❌ {res.json().get('error', 'Login failed.')}")
-            except Exception as e:
-                st.error(f"⚠️ Failed to connect to backend: {e}")
-
+# Session logic
 if st.session_state.get("just_logged_in"):
     st.session_state.pop("just_logged_in")
     st.success(f"✅ Logged in as **{st.session_state.username}**")

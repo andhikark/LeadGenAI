@@ -11,7 +11,10 @@ RUN apt-get update && apt-get install -y \
 # ===============================
 # ✅ Edge + EdgeDriver (v122)
 # ===============================
-RUN curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft.gpg &>    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/edge stable>    apt-get update && apt-get install -y microsoft-edge-stable && \
+RUN curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft.gpg && \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/edge stable main" \
+    > /etc/apt/sources.list.d/microsoft-edge.list && \
+    apt-get update && apt-get install -y microsoft-edge-stable && \
     wget -O /tmp/edgedriver.zip https://msedgedriver.azureedge.net/135.0.3179.85/edgedriver_linux64.zip && \
     unzip /tmp/edgedriver.zip -d /usr/local/bin && \
     chmod +x /usr/local/bin/msedgedriver && \
