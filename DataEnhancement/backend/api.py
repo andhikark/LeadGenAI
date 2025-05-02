@@ -10,7 +10,8 @@ from scraper.apollo_scraper import enrich_single_company
 # import shutil
 from scraper.growjoScraper import GrowjoScraper
 # from security import generate_token, token_required, VALID_USERS
-from scraper.apollo_people import find_best_person, enrich_person
+from scraper.apollo_people import find_best_person
+from scraper.apollo_scraper import enrich_single_company
 
 
 app = Flask(__name__)
@@ -109,19 +110,27 @@ def api_find_best_person_batch():
 
         results = []
         for domain in domains:
-            person = find_best_person(domain)
-            if person:
-                results.append(person)
-            else:
+            print(f"[DEBUG] Fetching decision maker for: {domain}")
+            try:
+                person = find_best_person(domain.strip())
+                if person:
+                    results.append(person)
+                else:
+                    results.append({
+                        "domain": domain,
+                        "error": "No person found"
+                    })
+            except Exception as e:
                 results.append({
                     "domain": domain,
-                    "error": "No person found"
+                    "error": str(e)
                 })
 
         return jsonify(results), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 @app.route("/api/apollo-scrape-batch", methods=["POST"])
 def apollo_scrape_batch():
@@ -134,9 +143,16 @@ def apollo_scrape_batch():
 
         results = []
         for domain in domains:
-            enriched = enrich_single_company(domain)
-            enriched["domain"] = domain
-            results.append(enriched)
+            print(f"[DEBUG] Scraping company info for: {domain}")
+            try:
+                enriched = enrich_single_company(domain.strip())
+                enriched["domain"] = domain
+                results.append(enriched)
+            except Exception as e:
+                results.append({
+                    "domain": domain,
+                    "error": str(e)
+                })
 
         return jsonify(results), 200
 

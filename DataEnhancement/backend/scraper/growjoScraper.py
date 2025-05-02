@@ -60,7 +60,7 @@ class GrowjoScraper:
         """Login into Growjo on the logged-in driver."""
         print("[DEBUG] Logging into Growjo (logged-in driver)...")
         self.driver_logged_in.get(GROWJO_LOGIN_URL)
-        time.sleep(3)
+        time.sleep(1)
         try:
             email_field = self.driver_logged_in.find_element(By.ID, "email")
             password_field = self.driver_logged_in.find_element(By.ID, "password")
@@ -70,7 +70,7 @@ class GrowjoScraper:
             password_field.send_keys(LOGIN_PASSWORD)
             form = self.driver_logged_in.find_element(By.TAG_NAME, "form")
             form.submit()
-            time.sleep(5)
+            time.sleep(1)
             if "/login" not in self.driver_logged_in.current_url:
                 print("[DEBUG] Login successful.")
                 self.logged_in = True
@@ -97,7 +97,7 @@ class GrowjoScraper:
 
                 search_url = f"https://growjo.com/?query={'%20'.join(query.split())}"
                 driver.get(search_url)
-                time.sleep(2)
+                time.sleep(1)
 
                 try:
                     print("[DEBUG] Waiting for at least one company row to load...")
@@ -134,7 +134,7 @@ class GrowjoScraper:
                     if similarity >= 0.65:
                         print(f"[DEBUG] Found good match: '{link_full_text}', clicking...")
                         driver.execute_script("arguments[0].click();", link)
-                        time.sleep(2)
+                        time.sleep(1)
 
                         if "/company/" in driver.current_url:
                             print(f"[DEBUG] Landed on company page: {driver.current_url}")
@@ -267,7 +267,7 @@ class GrowjoScraper:
             # Step 1: Scroll to bottom to trigger lazy loading
             print("[DEBUG] Scrolling to trigger lazy loading of employees...")
             driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(2)
+            time.sleep(1)
 
             # Step 2: Wait until at least 5 rows are present
             try:
@@ -370,7 +370,7 @@ class GrowjoScraper:
         try:
             print(f"[DEBUG] Navigating to decision maker profile: {profile_url}")
             driver.get(profile_url)
-            time.sleep(3)
+            time.sleep(2)
 
             # Click reveal buttons
             reveal_buttons = driver.find_elements(By.XPATH, "//button[contains(text(), 'Reveal')] | //a[contains(text(), 'Reveal')]")
@@ -378,7 +378,7 @@ class GrowjoScraper:
                 try:
                     driver.execute_script("arguments[0].click();", btn)
                     print(f"[DEBUG] Clicked a reveal button.")
-                    time.sleep(2)
+                    time.sleep(3)
                 except Exception as e:
                     print(f"[ERROR] Error clicking reveal button: {str(e)}")
 
