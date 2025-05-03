@@ -31,23 +31,22 @@ def split_name(full_name):
         return parts[0], " ".join(parts[1:])
 
 def normalize_website(website):
-    if pd.isna(website) or not isinstance(website, str):
+    if pd.isna(website) or not isinstance(website, str) or not website.strip():
         return ""
     
-    # First perform basic cleaning
     website = website.strip().lower()
     
-    # Add protocol if missing to make urlparse work properly
+    # Add protocol if missing for proper parsing
     if not website.startswith(('http://', 'https://')):
         website = 'http://' + website
-    
-    # Use urlparse to extract just the domain (netloc)
+
+    # Extract domain using urlparse
     parsed = urlparse(website)
-    domain = parsed.netloc
+    domain = parsed.netloc or parsed.path  # fallback in case urlparse fails
     
-    # Remove www. prefix
-    domain = domain.replace('www.', '')
-    
+    # Clean up domain
+    domain = domain.replace('www.', '').strip('/')
+
     return domain
 
 def revenue_to_number(revenue_str):
@@ -83,7 +82,7 @@ if "confirmed_selection_df" not in st.session_state:
 STANDARD_COLUMNS = [
     # 🏢 Company Information
     'Company', 'Website', 'Industry ', 'Product/Service Category',
-    'Business Type (B2B, B2B2C) ', 'Employees count', 'Revenue', 'Rev Source',
+    'Business Type (B2B, B2B2C)', 'Employees count', 'Revenue', 'Rev Source',
     'Year Founded', 'City', 'State',
 
     # 👤 Primary Contact (Decision Maker)
@@ -258,6 +257,8 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
             fill("Industry ", growjo.get("industry"), apollo.get("industry"))
             fill("Associated Members", "", "")
             fill("Employees count", growjo.get("employee_count"), apollo.get("employee_count"))
+            # ✅ Business Type (B2B, B2C, B2B2C)
+            fill("Business Type (B2B, B2B2C)", apollo.get("business_type", ""), "")
             # Apollo may return list of keywords
             apollo_keywords = ", ".join(apollo.get("keywords")) if isinstance(apollo.get("keywords"), list) else apollo.get("keywords", "")
             growjo_interests = growjo.get("interests", "")
