@@ -12,15 +12,6 @@ services:
       - .env
     restart: always
 
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: leadgen-frontend
-    ports:
-      - "8501:8501"
-    restart: always
-
   watchtower:
     image: containrrr/watchtower
     container_name: watchtower

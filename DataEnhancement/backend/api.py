@@ -1,18 +1,8 @@
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
-import os, time
-
-# import pandas as pd
-# import asyncio
-# import uuid
-# import logging
+import os
 from scraper.apollo_scraper import enrich_single_company
-
-# from selenium.webdriver.common.by import By
-# import shutil
 from scraper.growjoScraper import GrowjoScraper
-
-# from security import generate_token, token_required, VALID_USERS
 from scraper.apollo_people import find_best_person
 from scraper.apollo_scraper import enrich_single_company
 
@@ -21,10 +11,9 @@ app = Flask(__name__)
 load_dotenv()
 
 
-@app.route("/", methods=["GET"])
+@app.route("/health", methods=["GET"])
 def health_check():
-    return jsonify({"status": "ok", "message": "leadgen API is alive"}), 200
-
+    return jsonify({"status": "ok"}), 200
 
 # @app.route('/api/login', methods=['POST'])
 # def login():

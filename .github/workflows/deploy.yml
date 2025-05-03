@@ -20,10 +20,15 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.LIGHTSAIL_HOST }} >> ~/.ssh/known_hosts
 
-      - name: 🚀 Deploy via SSH
+      - name: 🚀 Deploy to Lightsail
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.LIGHTSAIL_HOST }} << 'EOF'
             cd ~/scraper-webapp/DataEnhancement || exit 1
+
+            # 🔐 Inject environment variables securely
+            echo "${{ secrets.BACKEND_ENV_VARS }}" > .env
+
+            # ✅ Pull latest code and redeploy
             git pull origin main
             docker compose down
             docker compose up -d --build

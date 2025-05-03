@@ -43,7 +43,7 @@ class GrowjoScraper:
         options.add_argument("--window-size=1920,1080")
 
         # 🚀 Install only once
-        driver_path = EdgeChromiumDriverManager().install()
+        driver_path = "/usr/local/bin/msedgedriver"
         service = EdgeService(driver_path)
 
         # 🚀 Launch browsers
