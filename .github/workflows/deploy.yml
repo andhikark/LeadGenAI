@@ -23,21 +23,20 @@ jobs:
       - name: 🚀 Deploy to Lightsail
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.LIGHTSAIL_HOST }} << 'EOF'
-            # 🏗️ Ensure project folder exists
             mkdir -p ~/scraper-webapp
             cd ~/scraper-webapp
 
-            # 🧠 Clone the repo if not already present
-            if [ ! -d "DataEnhancement" ]; then
-              git clone https://github.com/Rafiiisy/LeadGenAI.git DataEnhancement
+            # 🧠 Clone as LeadgenAI (not DataEnhancement)
+            if [ ! -d "LeadgenAI" ]; then
+              git clone https://github.com/Rafiiisy/LeadGenAI.git
             fi
 
-            cd DataEnhancement
+            cd LeadgenAI || exit 1
 
-            # 🔐 Inject environment variables securely
+            # 🔐 Inject env variables
             echo "${{ secrets.BACKEND_ENV_VARS }}" > .env
 
-            # ✅ Pull latest code and redeploy
+            # 🚀 Pull latest code & deploy
             git pull origin main
             docker compose down
             docker compose up -d --build
