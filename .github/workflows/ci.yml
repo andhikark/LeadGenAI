@@ -19,15 +19,16 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: 📦 Install Backend Requirements
+      - name: 📦 Install Dependencies
         run: |
           pip install -r DataEnhancement/backend/requirements.txt
-
-      - name: 📦 Install Frontend Requirements
-        run: |
           pip install -r DataEnhancement/frontend/requirements.txt
+          pip install flake8 black
+
+      - name: ✨ Check Code Format with Black
+        run: |
+          black --check DataEnhancement/
 
       - name: ⚙️ Lint with flake8
         run: |
-          pip install flake8
           flake8 DataEnhancement/
