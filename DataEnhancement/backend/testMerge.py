@@ -7,28 +7,30 @@ def split_name(full_name):
     else:
         return parts[0], " ".join(parts[1:])
 
+
 def normalize_website(website):
     if not website:
         return ""
-    
+
     # Import urlparse inside the function to avoid circular imports
     from urllib.parse import urlparse
-    
+
     # First perform basic cleaning
     website = website.strip().lower()
-    
+
     # Add protocol if missing to make urlparse work properly
-    if not website.startswith(('http://', 'https://')):
-        website = 'http://' + website
-    
+    if not website.startswith(("http://", "https://")):
+        website = "http://" + website
+
     # Use urlparse to extract just the domain (netloc)
     parsed = urlparse(website)
     domain = parsed.netloc
-    
+
     # Remove www. prefix
-    domain = domain.replace('www.', '')
-    
+    domain = domain.replace("www.", "")
+
     return domain
+
 
 # Simulated data (same as in real test)
 growjo = {
@@ -44,7 +46,7 @@ growjo = {
     "input_name": "zoom",
     "interests": "saas",
     "location": "San Francisco, CA",
-    "revenue": "$3.9B"
+    "revenue": "$3.9B",
 }
 
 apollo = {
@@ -54,7 +56,7 @@ apollo = {
     "keywords": "video conferencing, online meetings",
     "annual_revenue_printed": "4.5B",
     "website_url": "http://www.zoom.com",
-    "employee_count": "12000"
+    "employee_count": "12000",
 }
 
 apollo_person = {
@@ -65,7 +67,7 @@ apollo_person = {
     "title": "Founder & CEO",
     "email": "eric.yuan@zoom.us",
     "phone_number": "+18887999666",
-    "linkedin_url": "http://www.linkedin.com/in/ericsyuan"
+    "linkedin_url": "http://www.linkedin.com/in/ericsyuan",
 }
 
 # === Simulated Upload Logic ===
@@ -86,7 +88,7 @@ def test_fallback_merge(growjo, apollo, apollo_person):
         "Title": "",
         "First Name": "",
         "Last Name": "",
-        "LinkedIn URL": ""
+        "LinkedIn URL": "",
     }
 
     def val(v):
@@ -121,14 +123,14 @@ def test_fallback_merge(growjo, apollo, apollo_person):
         growjo.get("decider_email", ""),
         growjo.get("decider_phone", ""),
         growjo.get("decider_linkedin", ""),
-        growjo.get("decider_title", "")
+        growjo.get("decider_title", ""),
     ]
     apollo_fields = [
         f"{apollo_person.get('first_name', '')} {apollo_person.get('last_name', '')}".strip(),
         apollo_person.get("email", ""),
         apollo_person.get("phone_number", ""),
         apollo_person.get("linkedin_url", ""),
-        apollo_person.get("title", "")
+        apollo_person.get("title", ""),
     ]
     growjo_score = sum(1 for f in growjo_fields if val(f))
     apollo_score = sum(1 for f in apollo_fields if val(f))
@@ -152,6 +154,7 @@ def test_fallback_merge(growjo, apollo, apollo_person):
         fill("Last Name", last_name, "")
 
     return row
+
 
 # === Run
 final_result = test_fallback_merge(growjo, apollo, apollo_person)

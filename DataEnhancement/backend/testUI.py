@@ -14,17 +14,40 @@ api_response = {
     "input_name": "Dermatologist Medical Group of North County inc",
     "interests": "N/A",
     "location": "San Diego, CA",
-    "revenue": "$6.9M"
+    "revenue": "$6.9M",
 }
 
 # Columns from your Streamlit UI
 STANDARD_COLUMNS = [
-    'Company', 'City', 'State', 'First Name', 'Last Name', 'Email', 'Title', 'Website',
-    'LinkedIn URL', 'Industry ', 'Revenue', 'Product/Service Category',
-    'Business Type (B2B, B2B2C) ', 'Associated Members', 'Employees count', 'Rev Source', 'Year Founded',
-    "Owner's LinkedIn", 'Owner Age', 'Phone Number', 'Additional Notes', 'Score',
-    'Email customization #1', 'Subject Line #1', 'Email Customization #2', 'Subject Line #2',
-    'LinkedIn Customization #1', 'LinkedIn Customization #2', 'Reasoning for r//y/g'
+    "Company",
+    "City",
+    "State",
+    "First Name",
+    "Last Name",
+    "Email",
+    "Title",
+    "Website",
+    "LinkedIn URL",
+    "Industry ",
+    "Revenue",
+    "Product/Service Category",
+    "Business Type (B2B, B2B2C) ",
+    "Associated Members",
+    "Employees count",
+    "Rev Source",
+    "Year Founded",
+    "Owner's LinkedIn",
+    "Owner Age",
+    "Phone Number",
+    "Additional Notes",
+    "Score",
+    "Email customization #1",
+    "Subject Line #1",
+    "Email Customization #2",
+    "Subject Line #2",
+    "LinkedIn Customization #1",
+    "LinkedIn Customization #2",
+    "Reasoning for r//y/g",
 ]
 
 # Create a blank row
@@ -56,14 +79,29 @@ def split_name(full_name):
     else:
         return parts[0], " ".join(parts[1:])
 
+
 first_name, last_name = split_name(api_response.get("decider_name", ""))
 row["First Name"] = first_name
 row["Last Name"] = last_name
 
 # Output as a DataFrame
 df = pd.DataFrame([row])
-print(df[[
-    "Company", "City", "State", "First Name", "Last Name", "Email",
-    "Title", "Website", "LinkedIn URL", "Industry ", "Revenue",
-    "Employees count", "Phone Number"
-]])
+print(
+    df[
+        [
+            "Company",
+            "City",
+            "State",
+            "First Name",
+            "Last Name",
+            "Email",
+            "Title",
+            "Website",
+            "LinkedIn URL",
+            "Industry ",
+            "Revenue",
+            "Employees count",
+            "Phone Number",
+        ]
+    ]
+)

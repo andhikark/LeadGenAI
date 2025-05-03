@@ -1,14 +1,17 @@
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 import os, time
+
 # import pandas as pd
 # import asyncio
 # import uuid
 # import logging
 from scraper.apollo_scraper import enrich_single_company
+
 # from selenium.webdriver.common.by import By
 # import shutil
 from scraper.growjoScraper import GrowjoScraper
+
 # from security import generate_token, token_required, VALID_USERS
 from scraper.apollo_people import find_best_person
 from scraper.apollo_scraper import enrich_single_company
@@ -17,9 +20,11 @@ from scraper.apollo_scraper import enrich_single_company
 app = Flask(__name__)
 load_dotenv()
 
+
 @app.route("/", methods=["GET"])
 def health_check():
     return jsonify({"status": "ok", "message": "leadgen API is alive"}), 200
+
 
 # @app.route('/api/login', methods=['POST'])
 # def login():
@@ -65,10 +70,7 @@ def scrape_growjo_batch():
             if not company_name:
                 error_msg = f"Missing 'company' or 'name' field at item {idx}"
                 print(f"[ERROR] {error_msg}")
-                results.append({
-                    "error": error_msg,
-                    "input_name": None
-                })
+                results.append({"error": error_msg, "input_name": None})
                 continue
 
             try:
@@ -78,7 +80,7 @@ def scrape_growjo_batch():
                 if not result:
                     result = {
                         "error": f"Scraping returned no data for '{company_name}'",
-                        "company_name": company_name
+                        "company_name": company_name,
                     }
 
                 result["input_name"] = company_name
@@ -87,10 +89,7 @@ def scrape_growjo_batch():
             except Exception as scrape_error:
                 error_msg = f"Scraping failed for '{company_name}': {str(scrape_error)}"
                 print(f"[ERROR] {error_msg}")
-                results.append({
-                    "error": error_msg,
-                    "input_name": company_name
-                })
+                results.append({"error": error_msg, "input_name": company_name})
 
         scraper.close()
         return jsonify(results), 200
@@ -98,6 +97,7 @@ def scrape_growjo_batch():
     except Exception as e:
         print(f"[FATAL ERROR] {str(e)}")
         return jsonify({"error": str(e)}), 500
+
 
 @app.route("/api/find-best-person-batch", methods=["POST"])
 def api_find_best_person_batch():
@@ -116,15 +116,9 @@ def api_find_best_person_batch():
                 if person:
                     results.append(person)
                 else:
-                    results.append({
-                        "domain": domain,
-                        "error": "No person found"
-                    })
+                    results.append({"domain": domain, "error": "No person found"})
             except Exception as e:
-                results.append({
-                    "domain": domain,
-                    "error": str(e)
-                })
+                results.append({"domain": domain, "error": str(e)})
 
         return jsonify(results), 200
 
@@ -149,10 +143,7 @@ def apollo_scrape_batch():
                 enriched["domain"] = domain
                 results.append(enriched)
             except Exception as e:
-                results.append({
-                    "domain": domain,
-                    "error": str(e)
-                })
+                results.append({"domain": domain, "error": str(e)})
 
         return jsonify(results), 200
 
@@ -163,4 +154,3 @@ def apollo_scrape_batch():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))  # Render will provide the port
     app.run(host="0.0.0.0", port=port, debug=True)
-

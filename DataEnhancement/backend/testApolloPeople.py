@@ -9,7 +9,7 @@ domains = ["slack"]
 response = requests.post(
     f"{BACKEND_URL}{ENDPOINT}",
     json={"domains": domains},
-    headers={"Content-Type": "application/json"}  # Add auth if needed
+    headers={"Content-Type": "application/json"},  # Add auth if needed
 )
 
 if response.status_code == 200:

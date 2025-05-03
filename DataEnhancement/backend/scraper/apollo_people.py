@@ -9,10 +9,22 @@ APOLLO_SEARCH_URL = "https://api.apollo.io/api/v1/mixed_people/search"
 APOLLO_ENRICH_URL = "https://api.apollo.io/api/v1/people/match"
 
 priority_titles = [
-    "founder", "co-founder", "cofounder", "ceo", "chief executive officer",
-    "president", "coo", "chief operating officer", "cmo", "chief marketing officer",
-    "svp", "vp", "director", "manager"
+    "founder",
+    "co-founder",
+    "cofounder",
+    "ceo",
+    "chief executive officer",
+    "president",
+    "coo",
+    "chief operating officer",
+    "cmo",
+    "chief marketing officer",
+    "svp",
+    "vp",
+    "director",
+    "manager",
 ]
+
 
 def get_priority_rank(title):
     if not title:
@@ -23,11 +35,12 @@ def get_priority_rank(title):
             return idx
     return len(priority_titles) + 1
 
+
 def enrich_person(first_name, last_name, domain):
     headers = {
         "accept": "application/json",
         "Content-Type": "application/json",
-        "x-api-key": APOLLO_API_KEY
+        "x-api-key": APOLLO_API_KEY,
     }
 
     params = {
@@ -35,7 +48,7 @@ def enrich_person(first_name, last_name, domain):
         "last_name": last_name,
         "domain": domain,
         "reveal_personal_emails": "true",
-        "reveal_phone_number": "false"
+        "reveal_phone_number": "false",
     }
 
     response = requests.post(APOLLO_ENRICH_URL, headers=headers, params=params)
@@ -45,19 +58,20 @@ def enrich_person(first_name, last_name, domain):
 
     return response.json().get("person", {})
 
+
 def find_best_person(domain):
     params = {
         "person_titles[]": "",
         "person_seniorities[]": ["owner", "founder", "c_suite", "vp", "director", "manager"],
         "q_organization_domains_list[]": domain,
-        "contact_email_status[]": ""
+        "contact_email_status[]": "",
     }
 
     headers = {
         "accept": "application/json",
         "Cache-Control": "no-cache",
         "Content-Type": "application/json",
-        "x-api-key": APOLLO_API_KEY
+        "x-api-key": APOLLO_API_KEY,
     }
 
     response = requests.post(APOLLO_SEARCH_URL, headers=headers, params=params)
@@ -77,7 +91,7 @@ def find_best_person(domain):
     enriched = enrich_person(
         first_name=best_person.get("first_name", ""),
         last_name=best_person.get("last_name", ""),
-        domain=domain
+        domain=domain,
     )
 
     # --- Combine original + enriched ---
@@ -89,7 +103,9 @@ def find_best_person(domain):
         "title": best_person.get("title", ""),
         "linkedin_url": best_person.get("linkedin_url", ""),
         "email": best_person.get("email", ""),
-        "phone_number": best_person.get("organization", {}).get("primary_phone", {}).get("sanitized_number", "No phone found"),
+        "phone_number": best_person.get("organization", {})
+        .get("primary_phone", {})
+        .get("sanitized_number", "No phone found"),
     }
 
     # Override with enriched fields if available

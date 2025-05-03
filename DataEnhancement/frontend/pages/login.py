@@ -12,8 +12,10 @@ st.set_page_config(page_title="🔐 Login", layout="centered")
 
 cookies = CookieController()
 
+
 def login_form():
-    st.markdown("""
+    st.markdown(
+        """
         <style>
             .login-card {
                 background-color: #f9f9f9;
@@ -36,18 +38,22 @@ def login_form():
                 margin-bottom: 1.5rem;
             }
         </style>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
     with st.container():
         st.markdown('<div class="login-card">', unsafe_allow_html=True)
         st.markdown('<div class="login-title">🔐 Welcome Back</div>', unsafe_allow_html=True)
-        st.markdown('<div class="login-info">Please log in to continue</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="login-info">Please log in to continue</div>', unsafe_allow_html=True
+        )
 
         username = st.text_input("👤 Username")
         password = st.text_input("🔒 Password", type="password")
         login_btn = st.button("🚀 Login")
 
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
         if login_btn:
             if not username or not password:
@@ -62,6 +68,7 @@ def login_form():
                 st.rerun()
             else:
                 st.error("❌ Invalid credentials.")
+
 
 # Session logic
 if st.session_state.get("just_logged_in"):

@@ -18,8 +18,10 @@ if not st.session_state.get("logged_in"):
 def auth_headers():
     return {}  # You can return {"Authorization": "dummy"} if needed by backend
 
+
 def normalize_name(name):
     return name.strip().lower().replace(" ", "").replace("-", "").replace(".", "") if name else ""
+
 
 def split_name(full_name):
     parts = full_name.strip().split()
@@ -30,24 +32,26 @@ def split_name(full_name):
     else:
         return parts[0], " ".join(parts[1:])
 
+
 def normalize_website(website):
     if pd.isna(website) or not isinstance(website, str) or not website.strip():
         return ""
-    
+
     website = website.strip().lower()
-    
+
     # Add protocol if missing for proper parsing
-    if not website.startswith(('http://', 'https://')):
-        website = 'http://' + website
+    if not website.startswith(("http://", "https://")):
+        website = "http://" + website
 
     # Extract domain using urlparse
     parsed = urlparse(website)
     domain = parsed.netloc or parsed.path  # fallback in case urlparse fails
-    
+
     # Clean up domain
-    domain = domain.replace('www.', '').strip('/')
+    domain = domain.replace("www.", "").strip("/")
 
     return domain
+
 
 def revenue_to_number(revenue_str):
     """Convert revenue like '500K', '2M', '$1.2B' to a numeric float."""
@@ -69,10 +73,12 @@ def revenue_to_number(revenue_str):
 
 st.set_page_config(page_title="📤 Upload CSV & Normalize", layout="wide")
 st.title("📤 Upload & Normalize Lead Data")
-st.markdown("""
+st.markdown(
+    """
 Welcome! This tool allows you to upload a CSV file and normalize its structure 
 to match our standard format, and enrich it with Apollo, LinkedIn, and Growjo data.
-""")
+"""
+)
 
 if "normalized_df" not in st.session_state:
     st.session_state.normalized_df = None
@@ -81,16 +87,27 @@ if "confirmed_selection_df" not in st.session_state:
 
 STANDARD_COLUMNS = [
     # 🏢 Company Information
-    'Company', 'Website', 'Industry ', 'Product/Service Category',
-    'Business Type (B2B, B2B2C)', 'Employees count', 'Revenue', 'Rev Source',
-    'Year Founded', 'City', 'State',
-
+    "Company",
+    "Website",
+    "Industry ",
+    "Product/Service Category",
+    "Business Type (B2B, B2B2C)",
+    "Employees count",
+    "Revenue",
+    "Rev Source",
+    "Year Founded",
+    "City",
+    "State",
     # 👤 Primary Contact (Decision Maker)
-    'First Name', 'Last Name', 'Title', 'Email', 'Phone Number',
-    'LinkedIn URL', "Owner's LinkedIn",
-
+    "First Name",
+    "Last Name",
+    "Title",
+    "Email",
+    "Phone Number",
+    "LinkedIn URL",
+    "Owner's LinkedIn",
     # 🧩 Engagement Details / Notes
-    'Score',
+    "Score",
 ]
 
 st.markdown("### 📎 Step 1: Upload Your CSV")
@@ -103,10 +120,18 @@ if uploaded_file:
         st.success("✅ File uploaded successfully!")
 
         st.markdown("### ✅ Step 2: Select Rows to Enhance")
-        df['Select Row'] = False
-        edited_df = st.data_editor(df, use_container_width=True, num_rows="dynamic", key="editable_df", disabled=df.columns[:-1].tolist())
+        df["Select Row"] = False
+        edited_df = st.data_editor(
+            df,
+            use_container_width=True,
+            num_rows="dynamic",
+            key="editable_df",
+            disabled=df.columns[:-1].tolist(),
+        )
         selected_df = pd.DataFrame(edited_df)
-        rows_to_enhance = selected_df[selected_df['Select Row'] == True].drop(columns=['Select Row'])
+        rows_to_enhance = selected_df[selected_df["Select Row"] == True].drop(
+            columns=["Select Row"]
+        )
         selected_count = len(rows_to_enhance)
         st.markdown(f"**🧮 Selected Rows: `{selected_count}` / 100**")
 
@@ -134,13 +159,24 @@ if st.session_state.confirmed_selection_df is not None:
 
     st.markdown("#### 🔗 Map your CSV columns to our standard format:")
     for target in STANDARD_COLUMNS:
-        st.markdown(f"<div style='margin-bottom: -0.5rem; margin-top: 1rem; font-weight: 600;'>{target}</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='margin-bottom: -0.5rem; margin-top: 1rem; font-weight: 600;'>{target}</div>",
+            unsafe_allow_html=True,
+        )
         col1, col2 = st.columns([1, 2])
         with col1:
             st.text("From your file")
         with col2:
             default = auto_mapping.get(target, "-- None --")
-            selected = st.selectbox(" ", ["-- None --"] + list(data_for_mapping.columns), index=(["-- None --"] + list(data_for_mapping.columns)).index(default) if default != "-- None --" else 0, key=target, label_visibility="collapsed")
+            selected = st.selectbox(
+                " ",
+                ["-- None --"] + list(data_for_mapping.columns),
+                index=(["-- None --"] + list(data_for_mapping.columns)).index(default)
+                if default != "-- None --"
+                else 0,
+                key=target,
+                label_visibility="collapsed",
+            )
         column_mapping[target] = selected if selected != "-- None --" else None
 
     if st.button("🔄 Normalize CSV"):
@@ -152,18 +188,29 @@ if st.session_state.confirmed_selection_df is not None:
                 normalized_df[col] = ""
 
         mapped_input_columns = set(column_mapping.values())
-        extra_columns = [col for col in data_for_mapping.columns if col not in mapped_input_columns and col != "Select Row"]
+        extra_columns = [
+            col
+            for col in data_for_mapping.columns
+            if col not in mapped_input_columns and col != "Select Row"
+        ]
         for col in extra_columns:
             normalized_df[col] = data_for_mapping[col]
 
         st.session_state.normalized_df = normalized_df.copy()
         st.markdown("### ✅ Normalized Data Preview")
         st.dataframe(normalized_df.head(), use_container_width=True)
-        
 
-        st.download_button("📥 Download Normalized CSV", data=normalized_df.to_csv(index=False).encode("utf-8"), file_name="normalized_leads.csv", mime="text/csv")
+        st.download_button(
+            "📥 Download Normalized CSV",
+            data=normalized_df.to_csv(index=False).encode("utf-8"),
+            file_name="normalized_leads.csv",
+            mime="text/csv",
+        )
 
-if st.session_state.normalized_df is not None and st.session_state.confirmed_selection_df is not None:
+if (
+    st.session_state.normalized_df is not None
+    and st.session_state.confirmed_selection_df is not None
+):
     if st.button("🚀 Enrich Data"):
         st.markdown("⏳ Please wait while we enrich company data...")
         start_time = time.time()
@@ -179,7 +226,9 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
 
         # Step 1: Prepare all domains and company names first
         company_names = [row["Company"] for _, row in rows_to_update.iterrows()]
-        websites = [normalize_website(row.get("Website", "")) for _, row in rows_to_update.iterrows()]
+        websites = [
+            normalize_website(row.get("Website", "")) for _, row in rows_to_update.iterrows()
+        ]
         unique_websites = list(set([w for w in websites if w]))
 
         # Step 2: Run all 3 APIs in parallel
@@ -188,18 +237,18 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
                 requests.post,
                 f"{BACKEND_URL}/api/scrape-growjo-batch",
                 json=[{"company": c} for c in company_names],
-                headers=auth_headers()
+                headers=auth_headers(),
             )
             future_apollo = executor.submit(
                 requests.post,
                 f"{BACKEND_URL}/api/apollo-scrape-batch",
-                json={"domains": unique_websites}
+                json={"domains": unique_websites},
             )
             future_apollo_person = executor.submit(
                 requests.post,
                 f"{BACKEND_URL}/api/find-best-person-batch",
                 json={"domains": unique_websites},
-                headers=auth_headers()
+                headers=auth_headers(),
             )
 
             growjo_response = future_growjo.result().json()
@@ -211,9 +260,7 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
             (item.get("company_name") or item.get("input_name", "")).lower(): item
             for item in growjo_response
         }
-        apollo_map = {
-            item.get("domain"): item for item in apollo_response if item.get("domain")
-        }
+        apollo_map = {item.get("domain"): item for item in apollo_response if item.get("domain")}
         apollo_person_map = {
             item.get("domain"): item for item in apollo_person_response if item.get("domain")
         }
@@ -260,7 +307,11 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
             # ✅ Business Type (B2B, B2C, B2B2C)
             fill("Business Type (B2B, B2B2C)", apollo.get("business_type", ""), "")
             # Apollo may return list of keywords
-            apollo_keywords = ", ".join(apollo.get("keywords")) if isinstance(apollo.get("keywords"), list) else apollo.get("keywords", "")
+            apollo_keywords = (
+                ", ".join(apollo.get("keywords"))
+                if isinstance(apollo.get("keywords"), list)
+                else apollo.get("keywords", "")
+            )
             growjo_interests = growjo.get("interests", "")
 
             # Use Apollo if Growjo returns "N/A" or is missing
@@ -269,21 +320,20 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
             else:
                 rows_to_update.at[idx, "Product/Service Category"] = growjo_interests
 
-
             # Decision-maker: Compare Growjo vs ApolloPerson
             growjo_fields = [
                 growjo.get("decider_name", ""),
                 growjo.get("decider_email", ""),
                 growjo.get("decider_phone", ""),
                 growjo.get("decider_linkedin", ""),
-                growjo.get("decider_title", "")
+                growjo.get("decider_title", ""),
             ]
             apollo_fields = [
                 f"{apollo_person.get('first_name', '')} {apollo_person.get('last_name', '')}".strip(),
                 apollo_person.get("email", ""),
                 apollo_person.get("phone_number", ""),
                 apollo_person.get("linkedin_url", ""),
-                apollo_person.get("title", "")
+                apollo_person.get("title", ""),
             ]
 
             growjo_score = sum(1 for f in growjo_fields if f and f.lower() != "not found")
@@ -310,8 +360,6 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
             progress_bar.progress((i + 1) / len(rows_to_update))
             status_text.text(f"Enhanced {i + 1} of {len(rows_to_update)} rows")
 
-
-
         for col in rows_to_update.columns:
             enhanced_df.loc[rows_to_update.index, col] = rows_to_update[col]
 
@@ -322,10 +370,11 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
         st.session_state.enrichment_done = True
 
         csv = enhanced_df.to_csv(index=False).encode("utf-8")
-        st.download_button("📥 Download Enhanced CSV", csv, file_name="enriched_leads.csv", mime="text/csv")
+        st.download_button(
+            "📥 Download Enhanced CSV", csv, file_name="enriched_leads.csv", mime="text/csv"
+        )
 
-
-# Step 4: Filter Enhanced Data — OUTSIDE of the button block
+    # Step 4: Filter Enhanced Data — OUTSIDE of the button block
     if st.session_state.get("enrichment_done") and "enriched_df" in st.session_state:
         st.markdown("### 🧹 Step 4: Filter Enhanced Data")
 
@@ -333,13 +382,19 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
 
         filter_col1, filter_col2 = st.columns(2)
         with filter_col1:
-            min_revenue = st.text_input("Minimum Revenue (e.g., 500K, 1M, 2B)", value="", key="min_revenue_input")
+            min_revenue = st.text_input(
+                "Minimum Revenue (e.g., 500K, 1M, 2B)", value="", key="min_revenue_input"
+            )
         with filter_col2:
-            min_employees = st.number_input("Minimum Employees", value=0, step=1, key="min_employees_input")
+            min_employees = st.number_input(
+                "Minimum Employees", value=0, step=1, key="min_employees_input"
+            )
 
         # Apply filtering
         enhanced_df["Revenue Numeric"] = enhanced_df["Revenue"].apply(revenue_to_number)
-        enhanced_df["Employees Numeric"] = pd.to_numeric(enhanced_df["Employees count"], errors="coerce").fillna(0)
+        enhanced_df["Employees Numeric"] = pd.to_numeric(
+            enhanced_df["Employees count"], errors="coerce"
+        ).fillna(0)
 
         filtered_df = enhanced_df.copy()
 
@@ -351,12 +406,16 @@ if st.session_state.normalized_df is not None and st.session_state.confirmed_sel
             filtered_df = filtered_df[filtered_df["Employees Numeric"] >= min_employees]
 
         # Show filtered result
-        st.dataframe(filtered_df.drop(columns=["Revenue Numeric", "Employees Numeric"]).head(), use_container_width=True)
+        st.dataframe(
+            filtered_df.drop(columns=["Revenue Numeric", "Employees Numeric"]).head(),
+            use_container_width=True,
+        )
 
         if st.button("✅ Confirm Filtered Data"):
-            st.session_state.filtered_df = filtered_df.drop(columns=["Revenue Numeric", "Employees Numeric"]).copy()
+            st.session_state.filtered_df = filtered_df.drop(
+                columns=["Revenue Numeric", "Employees Numeric"]
+            ).copy()
             st.success("✅ Filtered data confirmed! Proceed to select final rows.")
-
 
 
 # Final Step: Select rows to download
@@ -371,10 +430,12 @@ if "filtered_df" in st.session_state:
         use_container_width=True,
         num_rows="dynamic",
         key="final_selection_editor",
-        disabled=filtered_data_with_select.columns[:-1].tolist()
+        disabled=filtered_data_with_select.columns[:-1].tolist(),
     )
 
-    selected_final_df = edited_final_df[edited_final_df["Select Row"] == True].drop(columns=["Select Row"])
+    selected_final_df = edited_final_df[edited_final_df["Select Row"] == True].drop(
+        columns=["Select Row"]
+    )
 
     st.markdown(f"**🧮 Selected Final Rows: `{len(selected_final_df)}`**")
 
@@ -384,7 +445,7 @@ if "filtered_df" in st.session_state:
             "📥 Download Final Selected CSV",
             csv_final,
             file_name="final_selected_leads.csv",
-            mime="text/csv"
+            mime="text/csv",
         )
     else:
         st.info("Please select at least one row to enable download.")
