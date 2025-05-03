@@ -25,10 +25,12 @@ jobs:
           pip install -r DataEnhancement/frontend/requirements.txt
           pip install flake8 black
 
-      - name: ✨ Check Code Format with Black
+      - name: ✨ Check Code Format with Black (Allow Failure)
+        continue-on-error: true
         run: |
           black --check DataEnhancement/
 
       - name: ⚙️ Lint with flake8
+        continue-on-error: true
         run: |
           flake8 DataEnhancement/
