@@ -83,8 +83,8 @@ st.sidebar.markdown("### ⚠️ Instructions")
 st.sidebar.markdown("""
 1. **Upload your `.csv` file** containing company data.
 2. **Choose how many rows** you'd like to enrich.
-3. During **column mapping**, ensure your dataset’s columns match the required normalized fields, especially **Company** and **Website**, or else it will not enrich your data correctly
-4. After enrichment, you can **filter specific rows** before downloading if some outputs aren’t satisfactory.
+3. During **column mapping**, ensure your dataset's columns match the required normalized fields, especially **Company** and **Website**, or else it will not enrich your data correctly
+4. After enrichment, you can **filter specific rows** before downloading if some outputs aren't satisfactory.
 
 ---
 
@@ -236,10 +236,43 @@ if (
 
         rows_to_update = base_df[base_df["Company"].notnull()].copy()
 
-        import concurrent.futures
-
         # Step 1: Prepare all domains and company names first
         company_names = [row["Company"] for _, row in rows_to_update.iterrows()]
+        websites = [
+            normalize_website(row.get("Website", "")) for _, row in rows_to_update.iterrows()
+        ]
+
+        # First, run Growjo to get websites for companies missing them
+        st.markdown("🔍 Fetching missing websites...")
+        companies_missing_websites = []
+        companies_missing_websites_indices = []
+
+        for i, (idx, row) in enumerate(rows_to_update.iterrows()):
+            company = row["Company"]
+            website = normalize_website(row.get("Website", ""))
+            if not website and company:
+                companies_missing_websites.append({"company": company})
+                companies_missing_websites_indices.append((i, idx))
+
+        # Only call the Growjo API if there are companies missing websites
+        growjo_websites_response = []
+        if companies_missing_websites:
+            growjo_websites_response = requests.post(
+                f"{BACKEND_URL}/api/scrape-growjo-batch",
+                json=companies_missing_websites,
+                headers=auth_headers(),
+            ).json()
+
+        # Update the websites for companies with missing websites
+        for i, (list_idx, df_idx) in enumerate(companies_missing_websites_indices):
+            if i < len(growjo_websites_response):
+                growjo_result = growjo_websites_response[i]
+                website = growjo_result.get("company_website", "")
+                if website and website.lower() != "not found":
+                    rows_to_update.at[df_idx, "Website"] = website
+                    st.markdown(f"✅ Found website for {growjo_result.get('company_name')}: {website}")
+
+        # Refresh websites list with newly found websites
         websites = [
             normalize_website(row.get("Website", "")) for _, row in rows_to_update.iterrows()
         ]
