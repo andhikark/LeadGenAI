@@ -31,7 +31,7 @@ jobs:
               git clone https://github.com/Rafiiisy/LeadGenAI.git
             fi
 
-            cd LeadgenAI || exit 1
+            cd LeadGenAI || exit 1
 
             # 🔐 Inject env variables
             echo "${{ secrets.BACKEND_ENV_VARS }}" > .env
