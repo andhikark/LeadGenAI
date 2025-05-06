@@ -20,6 +20,7 @@ GROWJO_SEARCH_URL = "https://growjo.com/"
 LOGIN_EMAIL = os.getenv("GROWJO_EMAIL")
 LOGIN_PASSWORD = os.getenv("GROWJO_PASSWORD")
 
+
 class GrowjoScraper:
     def __init__(self, headless=False):
         self.headless = headless
@@ -42,7 +43,7 @@ class GrowjoScraper:
         options.add_argument("--window-size=1920,1080")
 
         # 🚀 Install only once
-        driver_path = EdgeChromiumDriverManager().install()
+        driver_path = "/usr/local/bin/msedgedriver"
         service = EdgeService(driver_path)
 
         # 🚀 Launch browsers
@@ -55,12 +56,11 @@ class GrowjoScraper:
         self.wait_public = WebDriverWait(self.driver_public, 10)
         self.wait_logged_in = WebDriverWait(self.driver_logged_in, 10)
 
-
     def login_logged_in_browser(self):
         """Login into Growjo on the logged-in driver."""
         print("[DEBUG] Logging into Growjo (logged-in driver)...")
         self.driver_logged_in.get(GROWJO_LOGIN_URL)
-        time.sleep(3)
+        time.sleep(1)
         try:
             email_field = self.driver_logged_in.find_element(By.ID, "email")
             password_field = self.driver_logged_in.find_element(By.ID, "password")
@@ -70,7 +70,7 @@ class GrowjoScraper:
             password_field.send_keys(LOGIN_PASSWORD)
             form = self.driver_logged_in.find_element(By.TAG_NAME, "form")
             form.submit()
-            time.sleep(5)
+            time.sleep(1)
             if "/login" not in self.driver_logged_in.current_url:
                 print("[DEBUG] Login successful.")
                 self.logged_in = True
@@ -97,13 +97,11 @@ class GrowjoScraper:
 
                 search_url = f"https://growjo.com/?query={'%20'.join(query.split())}"
                 driver.get(search_url)
-                time.sleep(2)
+                time.sleep(1)
 
                 try:
                     print("[DEBUG] Waiting for at least one company row to load...")
-                    wait.until(EC.presence_of_element_located(
-                        (By.XPATH, "//table//tbody//tr")
-                    ))
+                    wait.until(EC.presence_of_element_located((By.XPATH, "//table//tbody//tr")))
                     print("[DEBUG] Company table and rows loaded ✅")
                 except TimeoutException:
                     print(f"[DEBUG] Company table not loaded for '{query}'.")
@@ -134,7 +132,7 @@ class GrowjoScraper:
                     if similarity >= 0.65:
                         print(f"[DEBUG] Found good match: '{link_full_text}', clicking...")
                         driver.execute_script("arguments[0].click();", link)
-                        time.sleep(2)
+                        time.sleep(1)
 
                         if "/company/" in driver.current_url:
                             print(f"[DEBUG] Landed on company page: {driver.current_url}")
@@ -160,8 +158,6 @@ class GrowjoScraper:
             print(f"[ERROR] Unexpected error in search_company: {str(e)}")
             return False
 
-
-
     def _calculate_similarity(self, a: str, b: str) -> float:
         """
         Helper to calculate similarity between two strings using difflib.
@@ -180,7 +176,7 @@ class GrowjoScraper:
             "website": "",
             "employees": "",
             "revenue": "",
-            "specialties": ""
+            "specialties": "",
         }
         try:
             # City
@@ -206,21 +202,29 @@ class GrowjoScraper:
 
             # Website
             try:
-                website_elem = driver.find_element(By.XPATH, "//a[contains(@target, '_blank') and contains(@href, '//') and img]")
+                website_elem = driver.find_element(
+                    By.XPATH, "//a[contains(@target, '_blank') and contains(@href, '//') and img]"
+                )
                 href = website_elem.get_attribute("href")
                 if href:
-                    details["website"] = href.replace("//", "https://") if href.startswith("//") else href
+                    details["website"] = (
+                        href.replace("//", "https://") if href.startswith("//") else href
+                    )
             except:
                 pass
 
             # Revenue
             try:
-                revenue_section = driver.find_element(By.XPATH, "//h2[contains(text(), 'Estimated Revenue & Valuation')]/following-sibling::ul[1]/li")
+                revenue_section = driver.find_element(
+                    By.XPATH,
+                    "//h2[contains(text(), 'Estimated Revenue & Valuation')]/following-sibling::ul[1]/li",
+                )
                 if revenue_section:
                     revenue_text = revenue_section.text.strip()
                     print(f"[DEBUG] Raw revenue section text: {revenue_text}")
 
                     import re
+
                     match = re.search(r"\$[0-9\.]+[BMK]?", revenue_text)
                     if match:
                         details["revenue"] = match.group(0)
@@ -229,12 +233,15 @@ class GrowjoScraper:
 
             # Employees
             try:
-                employee_section = driver.find_element(By.XPATH, "//h2[contains(., 'Employee Data')]/following-sibling::ul[1]/li")
+                employee_section = driver.find_element(
+                    By.XPATH, "//h2[contains(., 'Employee Data')]/following-sibling::ul[1]/li"
+                )
                 if employee_section:
                     employee_text = employee_section.text.strip()
                     print(f"[DEBUG] Raw employee section text: {employee_text}")
 
                     import re
+
                     match = re.search(r"\b\d+\b", employee_text)
                     if match:
                         details["employees"] = match.group(0)
@@ -243,23 +250,23 @@ class GrowjoScraper:
 
             # Keywords (Specialties)
             try:
-                keywords_elem = driver.find_element(By.XPATH, "//strong[contains(text(), 'keywords:')]")
+                keywords_elem = driver.find_element(
+                    By.XPATH, "//strong[contains(text(), 'keywords:')]"
+                )
                 parent = keywords_elem.find_element(By.XPATH, "..")
                 parent_text = parent.text
-                if 'keywords:' in parent_text:
-                    details["specialties"] = parent_text.split('keywords:', 1)[1].strip()
+                if "keywords:" in parent_text:
+                    details["specialties"] = parent_text.split("keywords:", 1)[1].strip()
                 else:
-                    details["specialties"] = ''
+                    details["specialties"] = ""
             except:
-                details["specialties"] = ''
+                details["specialties"] = ""
 
         except Exception as e:
             print(f"[ERROR] Error extracting company details for {company_name}: {str(e)}")
 
         return details
 
-
-    
     def find_decision_maker(self, driver, wait, company_name):
         try:
             print(f"[DEBUG] Looking for decision makers in '{company_name}'...")
@@ -267,7 +274,7 @@ class GrowjoScraper:
             # Step 1: Scroll to bottom to trigger lazy loading
             print("[DEBUG] Scrolling to trigger lazy loading of employees...")
             driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(2)
+            time.sleep(1)
 
             # Step 2: Wait until at least 5 rows are present
             try:
@@ -278,7 +285,9 @@ class GrowjoScraper:
                 )
                 print("[DEBUG] People table and at least 5 rows loaded ✅")
             except TimeoutException:
-                print(f"[ERROR] People table or enough rows not loaded after scrolling for {company_name}.")
+                print(
+                    f"[ERROR] People table or enough rows not loaded after scrolling for {company_name}."
+                )
                 return None
 
             # Step 3: Locate and parse people
@@ -306,8 +315,16 @@ class GrowjoScraper:
                 elif first_word == "chief" and len(words) > 1:
                     second_word = words[1]
                     if second_word in [
-                        "executive", "product", "marketing", "financial", "sales",
-                        "growth", "operating", "audit", "compliance", "information"
+                        "executive",
+                        "product",
+                        "marketing",
+                        "financial",
+                        "sales",
+                        "growth",
+                        "operating",
+                        "audit",
+                        "compliance",
+                        "information",
                     ]:
                         return 3
                 return 999
@@ -321,7 +338,9 @@ class GrowjoScraper:
                 title_col = cols[1]
 
                 try:
-                    profile_link_elem = name_col.find_element(By.XPATH, ".//a[contains(@href, '/employee/')]")
+                    profile_link_elem = name_col.find_element(
+                        By.XPATH, ".//a[contains(@href, '/employee/')]"
+                    )
                     href = profile_link_elem.get_attribute("href")
                     name = profile_link_elem.text.strip()
                     raw_title = title_col.text.strip()
@@ -329,15 +348,19 @@ class GrowjoScraper:
                     if not href or not name:
                         continue
 
-                    profile_url = "https://growjo.com" + href if href.startswith("/employee/") else href
+                    profile_url = (
+                        "https://growjo.com" + href if href.startswith("/employee/") else href
+                    )
                     priority = assign_priority(raw_title)
 
-                    candidates.append({
-                        "name": name,
-                        "title": raw_title,
-                        "profile_url": profile_url,
-                        "priority": priority
-                    })
+                    candidates.append(
+                        {
+                            "name": name,
+                            "title": raw_title,
+                            "profile_url": profile_url,
+                            "priority": priority,
+                        }
+                    )
 
                     print(f"[DEBUG] Candidate: {name} - {raw_title} (Priority: {priority})")
 
@@ -350,12 +373,14 @@ class GrowjoScraper:
                 candidates.sort(key=lambda x: x["priority"])
                 best_candidate = candidates[0]
 
-                print(f"[DEBUG] Best candidate selected: {best_candidate['name']} - {best_candidate['title']} (Priority: {best_candidate['priority']})")
+                print(
+                    f"[DEBUG] Best candidate selected: {best_candidate['name']} - {best_candidate['title']} (Priority: {best_candidate['priority']})"
+                )
 
                 return {
                     "name": best_candidate["name"],
                     "title": best_candidate["title"],
-                    "profile_url": best_candidate["profile_url"]
+                    "profile_url": best_candidate["profile_url"],
                 }
 
             print("[DEBUG] No decision makers found.")
@@ -365,20 +390,21 @@ class GrowjoScraper:
             print(f"[ERROR] Error finding decision maker: {str(e)}")
             return None
 
-
     def scrape_decision_maker_details(self, profile_url, driver):
         try:
             print(f"[DEBUG] Navigating to decision maker profile: {profile_url}")
             driver.get(profile_url)
-            time.sleep(3)
+            time.sleep(2)
 
             # Click reveal buttons
-            reveal_buttons = driver.find_elements(By.XPATH, "//button[contains(text(), 'Reveal')] | //a[contains(text(), 'Reveal')]")
+            reveal_buttons = driver.find_elements(
+                By.XPATH, "//button[contains(text(), 'Reveal')] | //a[contains(text(), 'Reveal')]"
+            )
             for btn in reveal_buttons:
                 try:
                     driver.execute_script("arguments[0].click();", btn)
                     print(f"[DEBUG] Clicked a reveal button.")
-                    time.sleep(2)
+                    time.sleep(3)
                 except Exception as e:
                     print(f"[ERROR] Error clicking reveal button: {str(e)}")
 
@@ -395,7 +421,7 @@ class GrowjoScraper:
                     text = elem.text.strip()
                     print(f"[DEBUG] join_link text: '{text}'")
 
-                    if '@' in text and '.' in text and not email:
+                    if "@" in text and "." in text and not email:
                         email = text
                     elif text.isdigit() and len(text) >= 8 and not phone:
                         phone = text
@@ -411,7 +437,9 @@ class GrowjoScraper:
             # Scrape LinkedIn link separately
             linkedin_url = None
             try:
-                linkedin_links = driver.find_elements(By.XPATH, "//a[contains(@href, 'linkedin.com')]")
+                linkedin_links = driver.find_elements(
+                    By.XPATH, "//a[contains(@href, 'linkedin.com')]"
+                )
                 if linkedin_links:
                     linkedin_url = linkedin_links[0].get_attribute("href")
             except Exception as e:
@@ -431,16 +459,17 @@ class GrowjoScraper:
                 "linkedin": "not found",
             }
 
-
     def scrape_full_pipeline(self, company_name):
         """Master method to run full scraping pipeline."""
         try:
             # Step 1: Public scrape
             if not self.search_company(self.driver_public, self.wait_public, company_name):
                 return {"error": "Company not found."}
-            
+
             company_info = self.extract_company_details(self.driver_public, company_name)
-            decision_maker = self.find_decision_maker(self.driver_public, self.wait_public, company_name)
+            decision_maker = self.find_decision_maker(
+                self.driver_public, self.wait_public, company_name
+            )
 
             if not decision_maker:
                 return {"error": "No decision maker found."}
@@ -457,7 +486,10 @@ class GrowjoScraper:
                 "company_name": company_info.get("company", company_name),
                 "company_website": company_info.get("website", "not found"),
                 "revenue": company_info.get("revenue", "not found"),
-                "location": ", ".join(filter(None, [company_info.get('city', ''), company_info.get('state', '')])) or "not found",
+                "location": ", ".join(
+                    filter(None, [company_info.get("city", ""), company_info.get("state", "")])
+                )
+                or "not found",
                 "industry": company_info.get("industry", "not found"),
                 "interests": company_info.get("specialties", "not found"),
                 "employee_count": company_info.get("employees", "not found"),

@@ -1,0 +1,43 @@
+name: CD Pipeline (Deploy to Lightsail)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🧾 Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: 🔐 Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.LIGHTSAIL_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.LIGHTSAIL_HOST }} >> ~/.ssh/known_hosts
+
+      - name: 🚀 Deploy to Lightsail
+        run: |
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.LIGHTSAIL_HOST }} << 'EOF'
+            mkdir -p ~/scraper-webapp
+            cd ~/scraper-webapp
+
+            # 🧠 Clone as LeadgenAI (not DataEnhancement)
+            if [ ! -d "LeadgenAI" ]; then
+              git clone https://github.com/Rafiiisy/LeadGenAI.git
+            fi
+
+            cd LeadGenAI || exit 1
+
+            # 🔐 Inject env variables
+            echo "${{ secrets.BACKEND_ENV_VARS }}" > .env
+
+            # 🚀 Pull latest code & deploy
+            git pull origin main
+            docker compose down
+            docker compose up -d --build
+          EOF
