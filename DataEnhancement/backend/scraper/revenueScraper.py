@@ -6,6 +6,7 @@ import re
 # ✅ Import fallback Growjo search
 from .growjo_list_scraper import get_growjo_company_list
 
+
 def clean_company_name_variants(name):
     variants = []
 
@@ -28,11 +29,10 @@ def clean_company_name_variants(name):
 
     return list(dict.fromkeys(variants))
 
+
 def get_company_revenue_from_growjo(company_name, depth=0):
     base_url = "https://growjo.com/company/"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-    }
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
     name_variants = clean_company_name_variants(company_name)
 
@@ -47,10 +47,10 @@ def get_company_revenue_from_growjo(company_name, depth=0):
             page_text = soup.get_text().lower()
 
             if (
-                "page not found" in page_text or 
-                "company not found" in page_text or 
-                "rank not available" in page_text or 
-                "estimated annual revenue" not in page_text
+                "page not found" in page_text
+                or "company not found" in page_text
+                or "rank not available" in page_text
+                or "estimated annual revenue" not in page_text
             ):
                 continue  # Not a real match
 
@@ -67,34 +67,25 @@ def get_company_revenue_from_growjo(company_name, depth=0):
                 "company": company_name,
                 "matched_variant": name_variant,
                 "estimated_revenue": revenue,
-                "url": company_url
+                "url": company_url,
             }
-
 
         except requests.exceptions.Timeout:
-            return {
-                "company": company_name,
-                "url": company_url,
-                "error": "Request timed out"
-            }
+            return {"company": company_name, "url": company_url, "error": "Request timed out"}
         except Exception:
             continue
 
     # ✅ Fallback: return default if not found in first try
     if depth == 0:
         print(f"⚠️ Fallback revenue for '{company_name}' → '<$5M'")
-        return {
-            "company": company_name,
-            "source": "fallback",
-            "estimated_revenue": "<$5M"
-        }
-
+        return {"company": company_name, "source": "fallback", "estimated_revenue": "<$5M"}
 
     return {
         "company": company_name,
         "error": "Not found in Growjo after variants + fallback search",
-        "attempted_variants": name_variants
+        "attempted_variants": name_variants,
     }
+
 
 # Example test
 if __name__ == "__main__":

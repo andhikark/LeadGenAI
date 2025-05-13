@@ -2,19 +2,19 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import quote, urlparse
 
+
 def normalize_url(url):
     if not url:
         return ""
     parsed = urlparse(url)
     return parsed.netloc.lower().replace("www.", "").strip("/")
 
+
 def find_company_website(company_name):
     query = quote(f"{company_name} official website")
     url = f"https://search.brave.com/search?q={query}"
     print(url)
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-    }
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
     try:
         res = requests.get(url, headers=headers, timeout=10)

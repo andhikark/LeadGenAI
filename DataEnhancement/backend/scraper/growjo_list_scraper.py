@@ -6,6 +6,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from urllib.parse import unquote
 import time
 
+
 def get_growjo_company_list(search_term):
     options = Options()
     options.add_argument("--headless")
@@ -42,6 +43,7 @@ def get_growjo_company_list(search_term):
         return []
     finally:
         driver.quit()
+
 
 # # Example usage
 # if __name__ == "__main__":

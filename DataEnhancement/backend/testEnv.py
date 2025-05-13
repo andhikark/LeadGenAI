@@ -8,9 +8,13 @@ load_dotenv()
 print("\n🔍 [Sanity Check] Loaded environment variables:")
 for key, value in os.environ.items():
     if any(env_key in key for env_key in ["DECODO", "LINKEDIN", "LI_AT", "USERNAME", "PASSWORD"]):
-        print(f"{key} = {value[:6]}... (length={len(value)})" if "PASS" in key or "TOKEN" in key else f"{key} = {value}")
+        print(
+            f"{key} = {value[:6]}... (length={len(value)})"
+            if "PASS" in key or "TOKEN" in key
+            else f"{key} = {value}"
+        )
 
-USERNAME = os.getenv("LINKEDIN_USERNAME") 
-PASSWORD = os.getenv("LINKEDIN_PASSWORD") 
+USERNAME = os.getenv("LINKEDIN_USERNAME")
+PASSWORD = os.getenv("LINKEDIN_PASSWORD")
 print(USERNAME)
 print(PASSWORD)
